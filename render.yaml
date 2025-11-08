@@ -6,11 +6,11 @@ services:
   # Backend API Service
   - type: web
     name: resumeit-backend
-    env: node
+    runtime: docker
     region: oregon
     plan: starter
-    buildCommand: cd backend && npm install && npx prisma generate && npm run build
-    startCommand: cd backend && npm run migrate && npm start
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
