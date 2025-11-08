@@ -8,14 +8,49 @@ const parseEnvInt = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+const DEFAULT_PROVIDER_CHAIN: ApiProvider[] = ['groq', 'gemini', 'openai', 'together']
+const GROQ_DAILY_LIMIT = parseEnvInt(process.env.GROQ_DAILY_LIMIT, 14_000)
+const PROVIDER_COOLDOWN_MS = parseEnvInt(process.env.LLM_PROVIDER_COOLDOWN_MS, 15_000)
+
+interface ProviderUsageStats {
+  count: number
+  cooldownUntil?: number
+}
+
+const providerUsage: Partial<Record<ApiProvider, ProviderUsageStats>> = {}
+let usageWindowKey = getUsageWindowKey()
+
 // API Provider configuration
-type ApiProvider = 'huggingface' | 'openrouter' | 'groq' | 'bytez'
+type ApiProvider =
+  | 'huggingface'
+  | 'openrouter'
+  | 'groq'
+  | 'bytez'
+  | 'gemini'
+  | 'together'
+  | 'openai'
+
+const SUPPORTED_PROVIDERS: ApiProvider[] = [
+  'groq',
+  'gemini',
+  'together',
+  'openai',
+  'bytez',
+  'openrouter',
+  'huggingface'
+]
 
 interface ApiConfig {
   provider: ApiProvider
   apiKey: string
   baseURL: string
   model: string
+}
+
+const normalizeProvider = (value?: string): ApiProvider => {
+  if (!value) return 'bytez'
+  const lowered = value.trim().toLowerCase() as ApiProvider
+  return SUPPORTED_PROVIDERS.includes(lowered) ? lowered : 'bytez'
 }
 
 const getProviderKeyEnvVar = (provider: ApiProvider): string => {
@@ -26,6 +61,12 @@ const getProviderKeyEnvVar = (provider: ApiProvider): string => {
       return 'OPENROUTER_API_KEY'
     case 'groq':
       return 'GROQ_API_KEY'
+    case 'together':
+      return 'TOGETHER_API_KEY'
+    case 'openai':
+      return 'OPENAI_API_KEY'
+    case 'gemini':
+      return 'GEMINI_API_KEY'
     case 'huggingface':
     default:
       return 'HF_TOKEN'
@@ -33,9 +74,7 @@ const getProviderKeyEnvVar = (provider: ApiProvider): string => {
 }
 
 
-const getApiConfig = (): ApiConfig => {
-  const provider = (process.env.LLM_PROVIDER || 'groq') as ApiProvider
-  
+const getApiConfig = (provider: ApiProvider): ApiConfig => {
   switch (provider) {
     case 'bytez':
       return {
@@ -57,6 +96,27 @@ const getApiConfig = (): ApiConfig => {
         apiKey: process.env.GROQ_API_KEY || '',
         baseURL: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
         model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768'
+      }
+    case 'gemini':
+      return {
+        provider: 'gemini',
+        apiKey: process.env.GEMINI_API_KEY || '',
+        baseURL: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta',
+        model: process.env.GEMINI_MODEL || 'models/gemini-1.5-flash'
+      }
+    case 'together':
+      return {
+        provider: 'together',
+        apiKey: process.env.TOGETHER_API_KEY || '',
+        baseURL: process.env.TOGETHER_BASE_URL || 'https://api.together.xyz/v1',
+        model: process.env.TOGETHER_MODEL || 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
+      }
+    case 'openai':
+      return {
+        provider: 'openai',
+        apiKey: process.env.OPENAI_API_KEY || '',
+        baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
       }
     case 'huggingface':
     default:
@@ -135,8 +195,7 @@ const computeRetryDelay = (attempt: number, retryAfterHeader?: string): number =
 }
 
 // Create OpenAI client based on provider configuration
-const createClient = (): OpenAI => {
-  const config = getApiConfig()
+const createClient = (config: ApiConfig): OpenAI => {
   return new OpenAI({
     baseURL: config.baseURL,
     apiKey: config.apiKey || 'placeholder'
@@ -144,13 +203,11 @@ const createClient = (): OpenAI => {
 }
 
 // OpenRouter specific request function
-const makeOpenRouterRequest = async (prompt: string, model: string): Promise<any> => {
-  const config = getApiConfig()
-  
+const makeOpenRouterRequest = async (prompt: string, config: ApiConfig): Promise<any> => {
   const response = await axios.post(
     `${config.baseURL}/chat/completions`,
     {
-      model: model,
+      model: config.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       max_tokens: 2500
@@ -168,15 +225,15 @@ const makeOpenRouterRequest = async (prompt: string, model: string): Promise<any
   return response.data
 }
 
-const makeBytezRequest = async (prompt: string, model: string): Promise<string> => {
-  const apiKey = process.env.BYTEZ_API_KEY
+const makeBytezRequest = async (prompt: string, config: ApiConfig): Promise<string> => {
+  const apiKey = config.apiKey
 
   if (!apiKey) {
     throw new Error('BYTEZ_API_KEY is missing. Add it to your environment before running production requests.')
   }
 
   const sdk = new Bytez(apiKey)
-  const bytezModel = sdk.model(model || 'openai/gpt-oss-20b')
+  const bytezModel = sdk.model(config.model || 'openai/gpt-oss-20b')
   const { error, output } = await bytezModel.run([
     {
       role: 'user',
@@ -206,6 +263,62 @@ const makeBytezRequest = async (prompt: string, model: string): Promise<string> 
   }
 
   return JSON.stringify(output)
+}
+
+const makeGeminiRequest = async (prompt: string, config: ApiConfig): Promise<string> => {
+  if (!config.apiKey) {
+    throw new Error('GEMINI_API_KEY is missing. Add it to your environment before running production requests.')
+  }
+
+  const endpoint = `${config.baseURL.replace(/\/$/, '')}/${config.model}:generateContent?key=${config.apiKey}`
+  const response = await axios.post(endpoint, {
+    contents: [{
+      parts: [{ text: prompt }]
+    }]
+  }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: parseInt(process.env.GEMINI_TIMEOUT_MS || '30000')
+  })
+
+  const candidates = response.data?.candidates
+  const candidate = Array.isArray(candidates) ? candidates[0] : undefined
+  const parts = candidate?.content?.parts
+  const text = Array.isArray(parts)
+    ? parts.map((part: any) => typeof part.text === 'string' ? part.text : '').join('\n').trim()
+    : ''
+
+  if (!text) {
+    throw new Error('Gemini returned an empty response.')
+  }
+
+  return text
+}
+
+const makeTogetherRequest = async (prompt: string, config: ApiConfig): Promise<string> => {
+  if (!config.apiKey) {
+    throw new Error('TOGETHER_API_KEY is missing. Add it to your environment.')
+  }
+
+  const endpoint = `${config.baseURL.replace(/\/$/, '')}/chat/completions`
+  const response = await axios.post(endpoint, {
+    model: config.model,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: parseFloat(process.env.TOGETHER_TEMPERATURE || '0.3'),
+    max_tokens: parseInt(process.env.TOGETHER_MAX_TOKENS || '2500'),
+    stream: false
+  }, {
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    timeout: parseInt(process.env.TOGETHER_TIMEOUT_MS || '30000')
+  })
+
+  const content = response.data?.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('Together AI returned an empty response.')
+  }
+  return content
 }
 
 // Enhanced response schema with dynamic resume points
@@ -348,7 +461,49 @@ Return this exact JSON structure:
 IMPORTANT: Respond ONLY with the JSON object. No explanatory text.`
 
 export async function generateTailored (jobDescription: string, resumeText: string): Promise<TailorResponse> {
-  const config = getApiConfig()
+  resetUsageWindowIfNeeded()
+  const providers = getProviderChain()
+
+  if (providers.length === 0) {
+    throw new Error('No AI providers configured. Please set PRIMARY_LLM_PROVIDER / FALLBACK_* or LLM_PROVIDER_CHAIN.')
+  }
+
+  console.log(`[LLM] Starting tailoring request. Providers=${providers.join(' -> ')} jobLen=${jobDescription.length} resumeLen=${resumeText.length}`)
+
+  let lastError: Error | null = null
+
+  for (const provider of providers) {
+    if (!isProviderConfigured(provider)) {
+      console.warn(`[LLM] Skipping ${provider}: missing ${getProviderKeyEnvVar(provider)}`)
+      continue
+    }
+
+    const skipReason = getSkipReason(provider)
+    if (skipReason) {
+      console.warn(`[LLM] Skipping ${provider}: ${skipReason}`)
+      continue
+    }
+
+    console.log(`[LLM] Attempting provider ${provider}`)
+
+    try {
+      const result = await generateWithProvider(provider, jobDescription, resumeText)
+      recordProviderSuccess(provider)
+      console.log(`[LLM] Completed with provider ${provider}`)
+      return result
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`[LLM] Provider ${provider} failed: ${lastError.message}`)
+      continue
+    }
+  }
+
+  console.error('[LLM] All providers failed', lastError)
+  throw lastError ?? new Error('All AI providers failed. Please try again.')
+}
+
+async function generateWithProvider (provider: ApiProvider, jobDescription: string, resumeText: string): Promise<TailorResponse> {
+  const config = getApiConfig(provider)
   
   // Validate API key based on provider
   console.log('🔍 Provider:', config.provider)
@@ -361,7 +516,9 @@ export async function generateTailored (jobDescription: string, resumeText: stri
       config.apiKey === 'placeholder' ||
       config.apiKey.length < 10) {
     console.error(`❌ Invalid ${keyName}`)
-    throw new Error(`Invalid or missing ${keyName}. Please check your .env file.`)
+    const error = new Error(`Invalid or missing ${keyName}. Please check your .env file.`)
+    attachProviderMetadata(error, config.provider)
+    throw error
   }
 
   // Create enhanced prompt
@@ -374,16 +531,16 @@ export async function generateTailored (jobDescription: string, resumeText: stri
 
     if (config.provider === 'bytez') {
       console.log('🚀 Calling Bytez API...')
-      content = await makeBytezRequest(prompt, config.model)
+      content = await makeBytezRequest(prompt, config)
     } else if (config.provider === 'openrouter') {
       // OpenRouter API call
       console.log('🚀 Calling OpenRouter API...')
-      const response = await makeOpenRouterRequest(prompt, config.model)
+      const response = await makeOpenRouterRequest(prompt, config)
       content = response?.choices?.[0]?.message?.content ?? null
     } else if (config.provider === 'groq') {
       // Groq API call with optimizations and retry logic
       console.log('🚀 Calling Groq API...')
-      const client = createClient()
+      const client = createClient(config)
       
       // Groq-specific optimizations
       const maxTokens = parseInt(process.env.GROQ_MAX_TOKENS || '4000')
@@ -430,9 +587,25 @@ export async function generateTailored (jobDescription: string, resumeText: stri
       }
 
       content = completion.choices[0]?.message?.content ?? null
-    } else {
+    } else if (config.provider === 'gemini') {
+      console.log('🚀 Calling Google Gemini API...')
+      content = await makeGeminiRequest(prompt, config)
+    } else if (config.provider === 'together') {
+      console.log('🚀 Calling Together API...')
+      content = await makeTogetherRequest(prompt, config)
+    } else if (config.provider === 'openai') {
+      console.log('🚀 Calling OpenAI API...')
+      const client = createClient(config)
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.3'),
+        max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS || '2500')
+      })
+      content = completion.choices[0]?.message?.content ?? null
+    } else if (config.provider === 'huggingface') {
       // Hugging Face API call with rate limiting
-      const client = createClient()
+      const client = createClient(config)
       let completion: OpenAI.Chat.Completions.ChatCompletion | undefined
       
       for (let attempt = 1; attempt <= HF_RATE_LIMIT_MAX_RETRIES; attempt++) {
@@ -472,6 +645,8 @@ export async function generateTailored (jobDescription: string, resumeText: stri
       }
 
       content = completion.choices[0]?.message?.content ?? null
+    } else {
+      throw new Error(`Unsupported provider: ${config.provider}`)
     }
 
     if (!content) {
@@ -541,46 +716,172 @@ export async function generateTailored (jobDescription: string, resumeText: stri
     console.log('✅ Response validated successfully')
     return parsed.data
   } catch (error: any) {
-    console.error('❌ LLM Service Error:', error)
+    handleProviderError(config, error)
+  }
+}
 
-    // Handle specific API errors
-    if (error.status === 401) {
-      const keyName = getProviderKeyEnvVar(config.provider)
-      throw new Error(`Invalid ${config.provider} API token. Please check ${keyName} in .env file.`)
+function getProviderChain (): ApiProvider[] {
+  const chainEnv = process.env.LLM_PROVIDER_CHAIN
+  const fromChain = chainEnv
+    ? chainEnv.split(',').map(item => item.trim()).filter(Boolean).map(normalizeProvider)
+    : []
+
+  if (fromChain.length > 0) {
+    return dedupeProviders(fromChain)
+  }
+
+  const priorityChain = buildPriorityChain()
+  if (priorityChain.length > 0) {
+    return dedupeProviders(priorityChain)
+  }
+
+  return DEFAULT_PROVIDER_CHAIN.slice()
+}
+
+function buildPriorityChain (): ApiProvider[] {
+  const stages = [
+    process.env.PRIMARY_LLM_PROVIDER,
+    process.env.FALLBACK_1_PROVIDER,
+    process.env.FALLBACK_2_PROVIDER,
+    process.env.FALLBACK_3_PROVIDER
+  ]
+
+  return stages
+    .map(value => value?.trim())
+    .filter(Boolean)
+    .map(value => normalizeProvider(value!))
+}
+
+function dedupeProviders (providers: ApiProvider[]): ApiProvider[] {
+  const seen = new Set<ApiProvider>()
+  const ordered: ApiProvider[] = []
+  for (const p of providers) {
+    if (!SUPPORTED_PROVIDERS.includes(p)) continue
+    if (seen.has(p)) continue
+    seen.add(p)
+    ordered.push(p)
+  }
+  return ordered
+}
+
+function resetUsageWindowIfNeeded (): void {
+  const nowKey = getUsageWindowKey()
+  if (nowKey !== usageWindowKey) {
+    usageWindowKey = nowKey
+    for (const key of Object.keys(providerUsage)) {
+      delete providerUsage[key as ApiProvider]
     }
+  }
+}
 
-    if (error.status === 402) {
-      if (config.provider === 'openrouter') {
-        throw new Error('OpenRouter account has insufficient credits. Please add credits at https://openrouter.ai/credits or switch to Hugging Face by setting LLM_PROVIDER=huggingface')
-      }
-      throw new Error('Payment required. Please check your API account billing.')
+function getUsageWindowKey (): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function getUsageStats (provider: ApiProvider): ProviderUsageStats {
+  if (!providerUsage[provider]) {
+    providerUsage[provider] = { count: 0 }
+  }
+  return providerUsage[provider]!
+}
+
+function getSkipReason (provider: ApiProvider): string | null {
+  const stats = getUsageStats(provider)
+
+  if (stats.cooldownUntil && Date.now() < stats.cooldownUntil) {
+    const seconds = Math.ceil((stats.cooldownUntil - Date.now()) / 1000)
+    return `cooldown (${seconds}s remaining)`
+  }
+
+  if (provider === 'groq' && GROQ_DAILY_LIMIT > 0 && stats.count >= GROQ_DAILY_LIMIT) {
+    return `daily quota reached (${GROQ_DAILY_LIMIT})`
+  }
+
+  return null
+}
+
+function recordProviderSuccess (provider: ApiProvider): void {
+  const stats = getUsageStats(provider)
+  stats.count++
+}
+
+function markProviderCooldown (provider: ApiProvider, ms: number): void {
+  const stats = getUsageStats(provider)
+  stats.cooldownUntil = Date.now() + Math.max(ms, 1_000)
+}
+
+function isProviderConfigured (provider: ApiProvider): boolean {
+  const keyName = getProviderKeyEnvVar(provider)
+  const key = process.env[keyName]
+  if (!key || key.length < 8) {
+    return false
+  }
+  return true
+}
+
+function handleProviderError (config: ApiConfig, error: any): never {
+  const status = error?.status ?? error?.response?.status
+  const message = error?.message ?? error?.response?.data?.error ?? error?.response?.data?.error?.message
+  const messageLower = (message || '').toLowerCase()
+
+  console.error(`❌ LLM Service Error (provider=${config.provider}, status=${status}):`, message || error)
+
+  const wrap = (err: Error): never => {
+    attachProviderMetadata(err, config.provider, status)
+    ;(err as any).rawError = error
+    throw err
+  }
+
+  // Handle specific API errors
+  if (status === 401) {
+    const keyName = getProviderKeyEnvVar(config.provider)
+    return wrap(new Error(`Invalid ${config.provider} API token. Please check ${keyName} in .env file.`))
+  }
+
+  if (status === 402) {
+    if (config.provider === 'openrouter') {
+      return wrap(new Error('OpenRouter account has insufficient credits. Please add credits or switch providers via LLM_PROVIDER_CHAIN.'))
     }
+    return wrap(new Error('Payment required. Please check your API account billing.'))
+  }
 
-    if (error.status === 429) {
-      if (config.provider === 'groq') {
-        throw new Error('⏱️ Groq rate limit exceeded. You have 30 requests per minute. Please wait a moment before trying again.')
-      }
-      throw new Error('⏱️ Rate limit exceeded. Please wait a moment before trying again.')
+  if (status === 429) {
+    markProviderCooldown(config.provider, PROVIDER_COOLDOWN_MS)
+    if (config.provider === 'groq') {
+      return wrap(new Error('⏱️ Groq rate limit exceeded. You have 30 requests per minute. Please wait a moment before trying again.'))
     }
+    return wrap(new Error('⏱️ Rate limit exceeded. Please wait a moment before trying again.'))
+  }
 
-    if (error.status === 503 || error.message?.includes('loading')) {
-      throw new Error('AI model is loading. Please wait 30 seconds and try again.')
-    }
+  if (status === 503 || messageLower.includes('loading')) {
+    return wrap(new Error('AI model is loading. Please wait 30 seconds and try again.'))
+  }
 
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      throw new Error(`Cannot connect to ${config.provider} API. Please check your internet connection.`)
-    }
+  if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND') {
+    return wrap(new Error(`Cannot connect to ${config.provider} API. Please check your internet connection.`))
+  }
 
-    // Re-throw our custom errors
-    if (error.message?.includes('TOKEN') ||
-        error.message?.includes('API_KEY') ||
-        error.message?.includes('empty response') ||
-        error.message?.includes('invalid JSON') ||
-        error.message?.includes('missing required fields')) {
-      throw error
-    }
+  // Re-throw our custom errors
+  const normalizedMessage = (message || '').toUpperCase()
+  if (normalizedMessage.includes('TOKEN') ||
+      normalizedMessage.includes('API_KEY') ||
+      normalizedMessage.includes('EMPTY RESPONSE') ||
+      normalizedMessage.includes('INVALID JSON') ||
+      normalizedMessage.includes('MISSING REQUIRED FIELDS')) {
+    return wrap(error instanceof Error ? error : new Error(String(message ?? error)))
+  }
 
-    // Generic error
-    throw new Error(`AI service error: ${error.message || 'Unknown error'}. Please try again.`)
+  if (messageLower.includes('upgrade your account') || messageLower.includes('insufficient credit')) {
+    markProviderCooldown(config.provider, Math.max(PROVIDER_COOLDOWN_MS, 60_000))
+  }
+
+  // Generic error
+  return wrap(new Error(`AI service error: ${message || 'Unknown error'}. Please try again.`))
+}
+
+function attachProviderMetadata (err: Error, provider: ApiProvider, status?: number): void {
+  (err as any).provider = provider
+  if (status !== undefined && status !== null) {
+    (err as any).status = status
   }
 }

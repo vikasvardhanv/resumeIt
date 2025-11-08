@@ -53,14 +53,43 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET:-${JWT_SECRET}}
       
-      # AI Provider Configuration (Groq) - Fully Optimized
-      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      # AI Provider Configuration (Groq primary)
+      - PRIMARY_LLM_PROVIDER=${PRIMARY_LLM_PROVIDER:-groq}
+      - FALLBACK_1_PROVIDER=${FALLBACK_1_PROVIDER:-gemini}
+      - FALLBACK_2_PROVIDER=${FALLBACK_2_PROVIDER:-openai}
+      - FALLBACK_3_PROVIDER=${FALLBACK_3_PROVIDER:-together}
+      - LLM_PROVIDER_CHAIN=${LLM_PROVIDER_CHAIN:-groq,gemini,openai,together}
+      - GROQ_DAILY_LIMIT=${GROQ_DAILY_LIMIT:-14000}
+      - LLM_PROVIDER_COOLDOWN_MS=${LLM_PROVIDER_COOLDOWN_MS:-15000}
+
+      # Groq tuning
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
       - GROQ_BASE_URL=${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
       - GROQ_MAX_TOKENS=${GROQ_MAX_TOKENS:-4000}
       - GROQ_TEMPERATURE=${GROQ_TEMPERATURE:-0.3}
       - GROQ_TIMEOUT_MS=${GROQ_TIMEOUT_MS:-30000}
+
+      # Optional Google Gemini fallback
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-models/gemini-1.5-flash}
+      - GEMINI_BASE_URL=${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      - GEMINI_TIMEOUT_MS=${GEMINI_TIMEOUT_MS:-30000}
+      
+      # Together AI fallback
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo}
+      - TOGETHER_BASE_URL=${TOGETHER_BASE_URL:-https://api.together.xyz/v1}
+      - TOGETHER_TIMEOUT_MS=${TOGETHER_TIMEOUT_MS:-30000}
+      - TOGETHER_MAX_TOKENS=${TOGETHER_MAX_TOKENS:-2500}
+      - TOGETHER_TEMPERATURE=${TOGETHER_TEMPERATURE:-0.3}
+
+      # OpenAI critical fallback
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MAX_TOKENS=${OPENAI_MAX_TOKENS:-2500}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE:-0.3}
       
       # Authentication
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}

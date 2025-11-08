@@ -10,7 +10,7 @@ export function configureAuth () {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         callbackURL:
           process.env.GOOGLE_CALLBACK_URL ||
-          `${process.env.API_BASE_URL || 'http://localhost:4000'}/api/v1/auth/google/callback`,
+          `${process.env.API_BASE_URL || 'https://resumeit-cdqp.onrender.com'}/api/v1/auth/google/callback`,
         scope: ['profile', 'email']
       },
       async (accessToken, refreshToken, profile, done) => {

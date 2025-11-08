@@ -35,12 +35,12 @@ ENV NODE_ENV=production
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Expose port
+# Expose port (Render injects PORT at runtime; defaults to 4000 for local use)
 EXPOSE 4000
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:4000/api/v1/health || exit 1
+  CMD ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-4000}/health || exit 1"]
 
-# Start the application
-CMD ["npm", "start"]
+# Run migrations before starting the app (safe to run on every boot)
+CMD ["sh", "-c", "npm run migrate && npm start"]

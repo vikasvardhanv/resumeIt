@@ -69,5 +69,6 @@ uploads/
 /scripts
 RENDER_DEPLOYMENT.md
 #render.yaml
-
+LANDING_PAGE_SETUP.md
 # Dockerfile, package manifests, source code, and config under version control
+landing/

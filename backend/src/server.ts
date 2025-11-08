@@ -4,8 +4,10 @@ import helmet from 'helmet'
 import cors from 'cors'
 import session from 'express-session'
 import passport from 'passport'
+import RedisStore from 'connect-redis'
 import pino from 'pino'
 import pinoHttp from 'pino-http'
+import { createClient } from 'redis'
 // Import routes
 import { analyzeJobRouter } from './api/analyzeJob.js'
 import { authRouter } from './api/auth.js'
@@ -19,6 +21,32 @@ const app = express()
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info'
 })
+
+const redisUrl = process.env.REDIS_URL
+const useRedisSessions = Boolean(redisUrl)
+let sessionStore: session.Store | undefined
+
+if (useRedisSessions) {
+  const redisClient = createClient({
+    url: redisUrl,
+    legacyMode: true
+  })
+
+  redisClient.on('error', (err) => {
+    logger.error({ err }, 'Redis client error')
+  })
+
+  redisClient.connect()
+    .then(() => logger.info('Connected to Redis for session store'))
+    .catch((err) => logger.error({ err }, 'Redis connection failed'))
+
+  sessionStore = new RedisStore({
+    client: redisClient as any,
+    prefix: 'resumeit:sess:'
+  })
+} else {
+  logger.warn('REDIS_URL not set. Falling back to in-memory session store (not recommended for production).')
+}
 
 // Configure authentication
 configureAuth()
@@ -67,6 +95,7 @@ app.use(express.urlencoded({ extended: true }))
 const isProduction = process.env.NODE_ENV === 'production'
 
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || 'resumeit-session-secret-change-in-production',
   resave: false,
   saveUninitialized: false,

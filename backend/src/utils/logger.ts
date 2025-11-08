@@ -1,34 +1,41 @@
-import pino from 'pino'
+import pino, { type TransportSingleOptions } from 'pino'
+import { createRequire } from 'module'
 
-// Create a shared logger instance for the entire application
-// Production: JSON logging (fast, structured)
-// Development: Pretty printing (human-readable)
+const require = createRequire(import.meta.url)
 
-const isDevelopment = process.env.NODE_ENV === 'development'
+const level = process.env.LOG_LEVEL || 'info'
+const isProduction = process.env.NODE_ENV === 'production'
 
-// Simple approach: in production, never use transport
-// In development, try to use pino-pretty but fallback to default if not available
-const loggerOptions: pino.LoggerOptions = {
-  level: process.env.LOG_LEVEL || 'info'
-}
+const prettyTransport = resolvePrettyTransport()
 
-// Only configure pretty printing in development environment
-// This ensures pino-pretty is never referenced in production code
-if (isDevelopment) {
+export const logger = prettyTransport
+  ? pino({ level, transport: prettyTransport })
+  : pino({ level })
+
+// Export default logger instance for convenience
+export default logger
+
+function resolvePrettyTransport(): TransportSingleOptions | undefined {
+  if (isProduction) return undefined
+
+  const prettyEnv = (process.env.LOG_PRETTY ?? process.env.PRETTY_LOGS ?? '').toLowerCase()
+  if (prettyEnv === 'false') return undefined
+
   try {
-    loggerOptions.transport = {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        ignore: 'pid,hostname',
-        translateTime: 'SYS:standard'
-      }
+    require.resolve('pino-pretty')
+  } catch (error) {
+    if (prettyEnv === 'true') {
+      console.warn('LOG_PRETTY is true but pino-pretty is not installed. Falling back to JSON logs.')
     }
-  } catch {
-    // Fallback to default if pino-pretty not available
+    return undefined
+  }
+
+  return {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      ignore: 'pid,hostname',
+      translateTime: 'SYS:standard'
+    }
   }
 }
-
-export const logger = pino(loggerOptions)
-
-export default logger

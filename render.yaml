@@ -15,8 +15,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 4000
       - key: LOG_LEVEL
         value: info
       - key: DATABASE_URL
@@ -35,12 +33,50 @@ services:
         sync: false
       - key: CHROME_EXTENSION_ID
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: LLM_PROVIDER
+      - key: PRIMARY_LLM_PROVIDER
         value: groq
+      - key: FALLBACK_1_PROVIDER
+        value: gemini
+      - key: FALLBACK_2_PROVIDER
+        value: openai
+      - key: FALLBACK_3_PROVIDER
+        value: together
+      - key: LLM_PROVIDER_CHAIN
+        value: groq,gemini,openai,together
+      - key: GROQ_DAILY_LIMIT
+        value: '14000'
+      - key: LLM_PROVIDER_COOLDOWN_MS
+        value: '15000'
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: models/gemini-1.5-flash
+      - key: GEMINI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta
+      - key: GEMINI_TIMEOUT_MS
+        value: '30000'
+      - key: TOGETHER_API_KEY
+        sync: false
+      - key: TOGETHER_MODEL
+        value: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo
+      - key: TOGETHER_BASE_URL
+        value: https://api.together.xyz/v1
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+      - key: OPENAI_MAX_TOKENS
+        value: '2500'
+      - key: OPENAI_TEMPERATURE
+        value: '0.3'
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
       - key: GROQ_BASE_URL
@@ -55,6 +91,27 @@ services:
         value: 50
       - key: ANALYZE_JOB_RATE_LIMIT_WINDOW_MS
         value: 900000
+
+  # Landing Page Static Site
+  - type: web
+    name: resume-tailor-landing
+    runtime: static
+    buildCommand: echo "Static site - no build needed"
+    staticPublishPath: ./landing
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=3600
+      - path: /*.css
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.js
+        name: Cache-Control
+        value: public, max-age=31536000
 
 databases:
   # PostgreSQL Database

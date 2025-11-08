@@ -25,7 +25,8 @@ const buildOptions = {
   logLevel: 'info',
   define: {
     'process.env.API_BASE_URL': JSON.stringify(process.env.API_BASE_URL || ''),
-    'process.env.AI_ANALYSIS_URL': JSON.stringify(process.env.AI_ANALYSIS_URL || '')
+    'process.env.AI_ANALYSIS_URL': JSON.stringify(process.env.AI_ANALYSIS_URL || ''),
+    'process.env.PREMIUM_REDIRECT_URL': JSON.stringify(process.env.PREMIUM_REDIRECT_URL || '')
   }
 };
 

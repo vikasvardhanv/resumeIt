@@ -157,7 +157,12 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, uplo
     const errorMessage = (error as Error).message || 'Unknown error'
 
     // Handle specific error types with proper status codes
-    if (errorMessage.includes('HF_TOKEN') || errorMessage.includes('GROQ_API_KEY') || errorMessage.includes('API token')) {
+    if (
+      errorMessage.includes('HF_TOKEN') ||
+      errorMessage.includes('GROQ_API_KEY') ||
+      errorMessage.includes('BYTEZ_API_KEY') ||
+      errorMessage.includes('API token')
+    ) {
       return res.status(500).json({
         success: false,
         error: 'AI service configuration error',

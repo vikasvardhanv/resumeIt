@@ -7,8 +7,6 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #333;
   overflow-y: auto;
-}
-
 #app {
   background: white;
   border-radius: 8px;
@@ -21,6 +19,9 @@ header {
   color: white;
   padding: 20px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 header h1 {
@@ -33,6 +34,48 @@ header h1 {
   margin: 5px 0 0 0;
   opacity: 0.9;
   font-size: 14px;
+}
+
+.health-chip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.health-chip:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.health-chip .health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+}
+
+.health-chip[data-state="ok"] .health-dot {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+}
+
+.health-chip[data-state="error"] .health-dot {
+  background: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
+}
+
+.health-chip[data-state="warn"] .health-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
 }
 
 .section {
