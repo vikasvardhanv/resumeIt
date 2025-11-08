@@ -1,6 +1,9 @@
 # Backend Dockerfile
 FROM node:20-slim
 
+# Set NODE_ENV to production
+ENV NODE_ENV=production
+
 # Install dependencies for native modules
 RUN apt-get update && apt-get install -y \
     python3 \
