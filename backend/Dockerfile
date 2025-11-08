@@ -1,9 +1,6 @@
 # Backend Dockerfile
 FROM node:20-slim
 
-# Set NODE_ENV to production
-ENV NODE_ENV=production
-
 # Install dependencies for native modules
 RUN apt-get update && apt-get install -y \
     python3 \
@@ -31,6 +28,9 @@ RUN npm run build
 
 # Remove devDependencies to reduce image size
 RUN npm prune --production
+
+# Now set NODE_ENV to production for runtime
+ENV NODE_ENV=production
 
 # Create uploads directory
 RUN mkdir -p uploads
