@@ -1,0 +1,69 @@
+# .gitignore for resumeit - excludes dev-only files so production artifacts are the ones pushed
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment files (secrets)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+out/
+public/build/
+coverage/
+.parcel-cache/
+.next/
+.turbo/
+.cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Docker / compose local overrides
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Uploaded user files (local dev storage)
+uploads/
+
+# Private keys / certs
+*.pem
+*.key
+*.crt
+
+# Backend / extension specific build artifacts
+/backend/node_modules/
+/backend/dist/
+/backend/.parcel-cache/
+/extension/build/
+/extension/dist/
+
+# Keep README, Dockerfile, package manifests, source code, and config under version control
+# (No explicit allow-list needed here — the patterns above will prevent common dev-only files from being committed.)
