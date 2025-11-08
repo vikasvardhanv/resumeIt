@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Resume Tailor Options</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <h1>Resume Tailor Settings</h1>
+    <section>
+      <h2>Profile</h2>
+      <label>Headline <input id="headline" /></label>
+      <label>Skills (comma separated) <input id="skills" /></label>
+      <button id="saveProfile">Save Profile</button>
+    </section>
+    <section>
+      <h2>Resume Upload</h2>
+      <input type="file" id="resumeFile" accept=".pdf,.doc,.docx,.txt" />
+      <button id="uploadBtn">Upload</button>
+      <div id="uploadStatus"></div>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

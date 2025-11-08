@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Resume Tailor - AI Resume Tailor</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Resume Tailor</h1>
+      <p class="subtitle">AI-Powered Resume Tailoring</p>
+    </header>
+
+    <!-- Step 1: Upload Resume -->
+    <section id="upload-section" class="section">
+      <h2>📄 Upload Your Resume</h2>
+      <div class="upload-area" id="uploadArea">
+        <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" hidden>
+        <div class="upload-content">
+          <div class="upload-icon">📎</div>
+          <p>Click to upload your resume</p>
+          <p class="upload-hint">PDF, DOC, DOCX, or TXT</p>
+        </div>
+      </div>
+      <div id="resumeStatus" class="resume-status hidden"></div>
+      <pre id="resumePreview" class="resume-preview hidden"></pre>
+    </section>
+
+    <!-- Step 2: Tailor Job -->
+    <section id="tailorSection" class="section">
+      <h2>🎯 Tailor Resume</h2>
+      <div id="jobDetection" class="job-detection">
+        <div id="noJobDetected" class="detection-status">
+          <span class="status-icon">🔍</span>
+          <span class="status-text">Navigate to a job posting on LinkedIn, Indeed, Dice, or other job sites</span>
+          <div id="debugInfo" style="font-size: 11px; color: #666; margin-top: 5px;"></div>
+        </div>
+        <div id="jobDetected" class="detection-status" style="display: none;">
+          <span class="status-icon">✅</span>
+          <span class="status-text">Job detected: <span id="detectedJobTitle"></span> at <span id="detectedCompany"></span></span>
+          <div class="button-group">
+            <button id="tailorBtn" class="tailor-btn">
+              ⚡ Auto-Tailor Resume
+            </button>
+            <button id="aiAnalyzeBtn" class="ai-analyze-btn">
+              🤖 AI Analysis
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Results -->
+    <section id="resultsSection" class="section hidden">
+      <div class="results-header">
+        <h2>✨ Tailored Resume</h2>
+        <button id="refreshResultsBtn" class="refresh-btn" title="Clear results and tailor for new job">🔄 Refresh</button>
+      </div>
+      <div id="resultsContent"></div>
+      <div class="actions">
+        <button id="copyBtn" class="secondary-btn" disabled>📋 Copy to Clipboard</button>
+        <button id="downloadBtn" class="secondary-btn" disabled>📄 Download Resume</button>
+      </div>
+    </section>
+
+    <!-- Status/Loading -->
+    <div id="status" class="status"></div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

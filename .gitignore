@@ -65,5 +65,9 @@ uploads/
 /extension/build/
 /extension/dist/
 
-# Keep README, Dockerfile, package manifests, source code, and config under version control
-# (No explicit allow-list needed here — the patterns above will prevent common dev-only files from being committed.)
+
+/scripts
+RENDER_DEPLOYMENT.md
+#render.yaml
+
+# Dockerfile, package manifests, source code, and config under version control

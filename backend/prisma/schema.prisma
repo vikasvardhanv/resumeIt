@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String           @id @default(cuid())
+  email          String           @unique
+  name           String
+  picture        String?
+  googleId       String           @unique
+  subscription   Subscription?
+  resumes        Resume[]
+  tailorings     Tailoring[]
+  loginActivity  LoginActivity[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("users")
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            SubscriptionStatus
+  stripeCustomerId  String?  @unique
+  stripeSubscriptionId String? @unique
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean  @default(false)
+  plan              String   @default("free") // free, premium
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+model Resume {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  content     String      // Base64 or text content
+  mimeType    String
+  size        Int
+  tailorings  Tailoring[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("resumes")
+}
+
+model Tailoring {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeId        String
+  resume          Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  jobTitle        String
+  jobCompany      String?
+  jobDescription  String
+  result          Json     // Stored tailoring result
+  matchScore      Int?
+  createdAt       DateTime @default(now())
+
+  @@map("tailorings")
+}
+
+model UsageLimit {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  tailorings  Int      @default(0)
+  month       String   // Format: YYYY-MM
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("usage_limits")
+}
+
+model LoginActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_activity")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  INCOMPLETE
+  UNPAID
+  TRIALING
+}
