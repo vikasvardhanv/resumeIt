@@ -17,14 +17,17 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including devDependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
 
 # Build the application
 RUN npm run build
+
+# Remove devDependencies to reduce image size
+RUN npm prune --production
 
 # Create uploads directory
 RUN mkdir -p uploads
