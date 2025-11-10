@@ -27,20 +27,23 @@ let uploadInitialized = false;
 let buttonsInitialized = false;
 let jobDetectionIntervalId: number | null = null;
 
-const uploadArea = document.getElementById('uploadArea') as HTMLElement | null;
-const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
-const resumeStatus = document.getElementById('resumeStatus') as HTMLElement | null;
-// tailorBtn removed in simplified UI; keep nullable guards
-const tailorBtn = document.getElementById('tailorBtn') as HTMLButtonElement | null;
-const aiAnalyzeBtn = document.getElementById('aiAnalyzeBtn') as HTMLButtonElement | null;
-const resultsSection = document.getElementById('resultsSection') as HTMLElement | null;
-const resultsContent = document.getElementById('resultsContent') as HTMLElement | null;
-const downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement | null;
-const copyBtn = document.getElementById('copyBtn') as HTMLButtonElement | null;
-// Removed location dropdown
-// Inline status area (bottom of popup)
-const status = document.getElementById('statusMessage') as HTMLElement;
-// Don't query health chip at module load (DOM not ready); resolve it on demand
+// Query elements after DOM is ready - these will be set in DOMContentLoaded
+let uploadArea: HTMLElement | null = null;
+let fileInput: HTMLInputElement | null = null;
+let resumeStatus: HTMLElement | null = null;
+let tailorBtn: HTMLButtonElement | null = null;
+let aiAnalyzeBtn: HTMLButtonElement | null = null;
+let resultsSection: HTMLElement | null = null;
+let resultsContent: HTMLElement | null = null;
+let downloadBtn: HTMLButtonElement | null = null;
+let copyBtn: HTMLButtonElement | null = null;
+let status: HTMLElement | null = null;
+let jobDetection: HTMLElement | null = null;
+let noJobDetected: HTMLElement | null = null;
+let jobDetected: HTMLElement | null = null;
+let detectedJobTitle: HTMLElement | null = null;
+let detectedCompany: HTMLElement | null = null;
+
 function getHealthChip(): HTMLButtonElement | null {
   return document.getElementById('healthChip') as HTMLButtonElement | null;
 }
@@ -85,13 +88,6 @@ const AI_KEYWORDS = [
   'ai', 'machine learning', 'ml', 'automation', 'genai', 'llm', 'data pipeline',
   'predictive', 'analytics', 'nlp', 'computer vision', 'model', 'generative'
 ];
-
-// Job detection elements
-const jobDetection = document.getElementById('jobDetection') as HTMLElement;
-const noJobDetected = document.getElementById('noJobDetected') as HTMLElement;
-const jobDetected = document.getElementById('jobDetected') as HTMLElement;
-const detectedJobTitle = document.getElementById('detectedJobTitle') as HTMLElement;
-const detectedCompany = document.getElementById('detectedCompany') as HTMLElement;
 
 // Initialise popup state
 document.addEventListener('DOMContentLoaded', async () => {
@@ -146,13 +142,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mainView = document.getElementById('mainView');
     if (authView) authView.classList.add('hidden');
     if (mainView) mainView.classList.remove('hidden');
-    
+
+    // Query all elements AFTER mainView is shown
+    uploadArea = document.getElementById('uploadArea') as HTMLElement | null;
+    fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
+    resumeStatus = document.getElementById('resumeStatus') as HTMLElement | null;
+    tailorBtn = document.getElementById('tailorBtn') as HTMLButtonElement | null;
+    aiAnalyzeBtn = document.getElementById('aiAnalyzeBtn') as HTMLButtonElement | null;
+    resultsSection = document.getElementById('resultsSection') as HTMLElement | null;
+    resultsContent = document.getElementById('resultsContent') as HTMLElement | null;
+    downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement | null;
+    copyBtn = document.getElementById('copyBtn') as HTMLButtonElement | null;
+    status = document.getElementById('statusMessage') as HTMLElement | null;
+    jobDetection = document.getElementById('jobDetection') as HTMLElement | null;
+    noJobDetected = document.getElementById('noJobDetected') as HTMLElement | null;
+    jobDetected = document.getElementById('jobDetected') as HTMLElement | null;
+    detectedJobTitle = document.getElementById('detectedJobTitle') as HTMLElement | null;
+    detectedCompany = document.getElementById('detectedCompany') as HTMLElement | null;
+
+    console.log('✅ Elements queried:', {
+      tailorBtn: !!tailorBtn,
+      uploadArea: !!uploadArea,
+      jobDetection: !!jobDetection
+    });
+
     // Update user info
     if (userAuth?.user) {
       const userInitials = document.getElementById('userInitials');
       const userName = document.getElementById('userName');
       const userEmail = document.getElementById('userEmail');
-      
+
       if (userInitials) {
         const initials = userAuth.user.name
           ?.split(' ')
@@ -164,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (userName) userName.textContent = userAuth.user.name || 'User';
       if (userEmail) userEmail.textContent = userAuth.user.email || '';
     }
-    
+
   // Initialize features
   initializeUpload();
   await loadPersistedResume();
@@ -665,8 +684,16 @@ async function checkForJobOnCurrentTab() {
 }
 
 function updateJobDetectionUI(job: any) {
+  console.log('🎨 updateJobDetectionUI called with job:', job);
+  console.log('✅ Valid job found, updating UI');
+
+  if (!noJobDetected || !jobDetected || !detectedJobTitle || !detectedCompany || !jobDetection) {
+    console.warn('⚠️ Job detection UI elements not found');
+    return;
+  }
+
   const debugInfo = document.getElementById('debugInfo') as HTMLElement;
-  
+
   if (job && job.title && job.company) {
     // Show job detected
     noJobDetected.style.display = 'none';
@@ -674,9 +701,9 @@ function updateJobDetectionUI(job: any) {
     detectedJobTitle.textContent = job.title;
     detectedCompany.textContent = job.company;
     jobDetection.classList.add('active');
-    
-    // Location dropdown removed
-    
+
+    console.log('📞 Calling updateTailorButton from updateJobDetectionUI');
+
     // Update debug info
     if (debugInfo) {
       debugInfo.textContent = `✅ Domain: ${job.source} | Desc: ${job.description?.length || 0} chars`;
@@ -686,9 +713,7 @@ function updateJobDetectionUI(job: any) {
     noJobDetected.style.display = 'flex';
     jobDetected.style.display = 'none';
     jobDetection.classList.remove('active');
-    
-    // Location dropdown removed
-    
+
     // Update debug info with current tab info
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const currentTab = tabs[0];
@@ -698,7 +723,7 @@ function updateJobDetectionUI(job: any) {
       }
     });
   }
-  
+
   updateTailorButton();
 }
 
@@ -1572,7 +1597,9 @@ function setButtonLoading(button: HTMLButtonElement, loading: boolean) {
 }
 
 function setStatus(message: string) {
-  status.textContent = message;
+  if (status) {
+    status.textContent = message;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message: TailorResultMessage) => {
