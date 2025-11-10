@@ -82,6 +82,12 @@ const GLOBAL_PATTERNS: DOMPattern[] = [
   { selector: '[class*="description"], [class*="details"], [id*="description"], [class*="content"]', weight: 80, role: 'description' },
   { selector: 'article, main, [role="main"], .content, #content, .main-content', weight: 70, role: 'description' },
   
+  // RESPONSIBILITIES/REQUIREMENTS sections
+  { selector: '[id*="responsibil" i], [class*="responsibil" i], [data-testid*="responsibil" i], [data-test*="responsibil" i]', weight: 85, role: 'description' },
+  { selector: '[id*="requirement" i], [class*="requirement" i], [data-testid*="requirement" i], [data-test*="requirement" i]', weight: 85, role: 'description' },
+  { selector: '[id*="qualification" i], [class*="qualification" i], [data-testid*="qualification" i], [data-test*="qualification" i]', weight: 80, role: 'description' },
+  { selector: '[id*="what-you" i], [class*="what-you" i], [data-testid*="whatyou" i], [aria-label*="what you" i]', weight: 75, role: 'description' },
+  
   // SEMANTIC HTML5 patterns
   { selector: 'article > header h1, article > h1, section > h1', weight: 85, role: 'title' },
   { selector: 'article > section, article > div[class*="description"], article > div[class*="content"]', weight: 80, role: 'description' },
@@ -98,6 +104,180 @@ const GLOBAL_PATTERNS: DOMPattern[] = [
   { selector: '[class*="企業"], [class*="会社"], [class*="職位"]', weight: 75, role: 'company' }, // Japanese
   { selector: '[class*="详情"], [class*="描述"], [class*="职位"]', weight: 75, role: 'description' }, // Chinese
 ];
+
+// ============================================================================
+// DYNAMIC DESCRIPTION SIGNALS (for generic employer sites & custom layouts)
+// ============================================================================
+
+const DESCRIPTION_SECTION_KEYWORDS = [
+  'job description',
+  'role description',
+  'position description',
+  'position summary',
+  'about this role',
+  'about the role',
+  'about the job',
+  'about you',
+  'about the team',
+  'role overview',
+  'what you do',
+  'what you will do',
+  'what you\'ll do',
+  'what you will be doing',
+  'what you\'ll be doing',
+  'what you bring',
+  'what you\'ll bring',
+  'what you\'ll need',
+  'what you need',
+  'what we need',
+  'what we\'re looking for',
+  'who we need',
+  'who we\'re looking for',
+  'who you are',
+  'your impact',
+  'day to day',
+  'day-to-day',
+  'responsibilities',
+  'key responsibilities',
+  'primary responsibilities',
+  'duties',
+  'expectations',
+  'requirements',
+  'minimum requirements',
+  'preferred requirements',
+  'preferred qualifications',
+  'qualifications',
+  'skills',
+  'benefits'
+];
+
+const DESCRIPTION_HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, strong, b, summary';
+const DESCRIPTION_CONTAINER_SELECTOR = 'section, article, main, [role="main"], div[class*="description"], div[class*="details"], div[class*="content"], div[class*="job"], div[class*="posting"], div[id*="job"], div[id*="posting"]';
+
+function findDescriptionDynamically(): string | null {
+  const fromHeadings = buildDescriptionFromKeywordHeadings();
+  if (fromHeadings) {
+    return fromHeadings;
+  }
+  
+  return findDescriptionFromLargeBlocks();
+}
+
+function buildDescriptionFromKeywordHeadings(): string | null {
+  const headingElements = Array.from(document.querySelectorAll(DESCRIPTION_HEADING_SELECTOR));
+  const sections: { text: string; score: number }[] = [];
+  const seenContainers = new Set<Element>();
+  
+  headingElements.forEach(heading => {
+    const headingText = heading.textContent?.trim();
+    if (!headingText) return;
+    if (!matchesDescriptionKeyword(headingText)) return;
+    
+    const container = heading.closest('section, article, div, li') || heading.parentElement;
+    if (!container || seenContainers.has(container)) return;
+    
+    const textContent = sanitizeDescriptionText(container.textContent || '');
+    if (textContent.length < 250 || textContent.length > 25000) return;
+    
+    const score = scoreDescriptionText(textContent);
+    if (score < 35) return;
+    
+    sections.push({ text: textContent, score });
+    seenContainers.add(container);
+  });
+  
+  if (sections.length === 0) return null;
+  
+  const combined = sections
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(section => section.text)
+    .filter((text, index, self) => self.findIndex(other => other === text) === index)
+    .join('\n\n')
+    .trim();
+  
+  return combined.length >= 300 ? combined : null;
+}
+
+function findDescriptionFromLargeBlocks(): string | null {
+  const candidates: { text: string; score: number }[] = [];
+  const elements = Array.from(document.querySelectorAll(DESCRIPTION_CONTAINER_SELECTOR));
+  
+  elements.forEach(element => {
+    if (!isHTMLElement(element)) return;
+    if (!isElementVisible(element)) return; // hidden elements
+    
+    const textContent = sanitizeDescriptionText(element.textContent || '');
+    if (textContent.length < 500 || textContent.length > 25000) return;
+    
+    const score = scoreDescriptionText(textContent);
+    if (score < 40) return;
+    
+    candidates.push({ text: textContent, score });
+  });
+  
+  if (candidates.length === 0) return null;
+  
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].text;
+}
+
+function scoreDescriptionText(text: string): number {
+  const normalized = text.toLowerCase();
+  let score = Math.min(40, Math.floor(text.length / 150));
+  
+  const keywordHits = DESCRIPTION_SECTION_KEYWORDS.reduce((count, keyword) => 
+    count + (normalized.includes(keyword) ? 1 : 0), 0);
+  score += keywordHits * 4;
+  
+  if (/[•\-\*]\s/.test(text)) score += 10;
+  if (/\n\s*\d+[\.)]/.test(text)) score += 5;
+  
+  const requirementSignals = [
+    'must have',
+    'required',
+    'should have',
+    'experience with',
+    'preferred',
+    'at least',
+    'nice to have',
+    'need to',
+    'responsible for'
+  ];
+  
+  requirementSignals.forEach(signal => {
+    if (normalized.includes(signal)) score += 3;
+  });
+  
+  return score;
+}
+
+function matchesDescriptionKeyword(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return DESCRIPTION_SECTION_KEYWORDS.some(keyword => normalized.includes(keyword));
+}
+
+function sanitizeDescriptionText(text: string): string {
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function isHTMLElement(element: Element): element is HTMLElement {
+  return element instanceof HTMLElement;
+}
+
+function isElementVisible(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity || '1') === 0) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
 
 // ============================================================================
 // LAYER 0.5: SMART DOM PATTERN MATCHING (FAST PATH)
@@ -164,6 +344,16 @@ function tryPatternMatching(): Partial<JobData> | null {
       }
     } catch (e) {
       // Invalid selector, skip
+    }
+  }
+  
+  // Dynamic description inference for custom employer pages
+  if (!result.description) {
+    const dynamicDescription = findDescriptionDynamically();
+    if (dynamicDescription) {
+      result.description = dynamicDescription;
+      matchCount++;
+      console.log(`✅ Description inferred dynamically (${dynamicDescription.length} chars)`);
     }
   }
   

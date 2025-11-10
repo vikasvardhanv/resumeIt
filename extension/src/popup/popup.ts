@@ -27,17 +27,23 @@ let uploadInitialized = false;
 let buttonsInitialized = false;
 let jobDetectionIntervalId: number | null = null;
 
-const uploadArea = document.getElementById('uploadArea') as HTMLElement;
-const fileInput = document.getElementById('fileInput') as HTMLInputElement;
-const resumeStatus = document.getElementById('resumeStatus') as HTMLElement;
-const tailorBtn = document.getElementById('tailorBtn') as HTMLButtonElement;
-const aiAnalyzeBtn = document.getElementById('aiAnalyzeBtn') as HTMLButtonElement;
-const resultsSection = document.getElementById('resultsSection') as HTMLElement;
-const resultsContent = document.getElementById('resultsContent') as HTMLElement;
-const downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement;
-const copyBtn = document.getElementById('copyBtn') as HTMLButtonElement;
-const status = document.getElementById('status') as HTMLElement;
-const healthChip = document.getElementById('healthChip') as HTMLButtonElement | null;
+const uploadArea = document.getElementById('uploadArea') as HTMLElement | null;
+const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
+const resumeStatus = document.getElementById('resumeStatus') as HTMLElement | null;
+// tailorBtn removed in simplified UI; keep nullable guards
+const tailorBtn = document.getElementById('tailorBtn') as HTMLButtonElement | null;
+const aiAnalyzeBtn = document.getElementById('aiAnalyzeBtn') as HTMLButtonElement | null;
+const resultsSection = document.getElementById('resultsSection') as HTMLElement | null;
+const resultsContent = document.getElementById('resultsContent') as HTMLElement | null;
+const downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement | null;
+const copyBtn = document.getElementById('copyBtn') as HTMLButtonElement | null;
+// Removed location dropdown
+// Inline status area (bottom of popup)
+const status = document.getElementById('statusMessage') as HTMLElement;
+// Don't query health chip at module load (DOM not ready); resolve it on demand
+function getHealthChip(): HTMLButtonElement | null {
+  return document.getElementById('healthChip') as HTMLButtonElement | null;
+}
 type HealthState = 'checking' | 'ok' | 'warn' | 'error';
 let healthTimer: number | null = null;
 
@@ -89,12 +95,45 @@ const detectedCompany = document.getElementById('detectedCompany') as HTMLElemen
 
 // Initialise popup state
 document.addEventListener('DOMContentLoaded', async () => {
-  if (!IS_AI_ANALYSIS_ENABLED) {
-    aiAnalyzeBtn.style.display = 'none';
+  console.log('🚀 Popup DOMContentLoaded fired');
+  
+  // Setup Google login button event listener
+  const googleLoginBtn = document.getElementById('googleLoginBtn') as HTMLButtonElement;
+  console.log('🔍 Google login button:', googleLoginBtn);
+  if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', () => {
+      console.log('🖱️ Google login button clicked!');
+      loginWithGoogle();
+    });
+    console.log('✅ Google login event listener attached');
+  } else {
+    console.error('❌ Google login button not found!');
+  }
+  
+  // Setup logout button event listener
+  const logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', logout);
   }
 
-  if (healthChip) {
-    healthChip.addEventListener('click', () => checkBackendHealth(true));
+  // Optional feature gating
+  try {
+    if (!IS_AI_ANALYSIS_ENABLED && typeof aiAnalyzeBtn !== 'undefined' && aiAnalyzeBtn) {
+      aiAnalyzeBtn.style.display = 'none';
+    }
+  } catch {}
+
+  // Quickly show last known backend health before re-checking
+  try {
+    const stored = await chrome.storage.local.get('lastHealthStatus');
+    if (stored?.lastHealthStatus) {
+      updateHealthChip(stored.lastHealthStatus.state as HealthState, stored.lastHealthStatus.text);
+    }
+  } catch {}
+
+  const hc = getHealthChip();
+  if (hc) {
+    hc.addEventListener('click', () => checkBackendHealth(true));
     checkBackendHealth(false);
   }
 
@@ -102,17 +141,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   isAuthenticated = authenticated;
   
   if (isAuthenticated) {
-    initializeUpload();
-    initializeButtons();
-    await loadPersistedResume();
-    await hydrateLastResult();
-    startJobDetection(); // Start polling for job detection
-    updateTailorButton();
+    // Show main view
+    const authView = document.getElementById('authView');
+    const mainView = document.getElementById('mainView');
+    if (authView) authView.classList.add('hidden');
+    if (mainView) mainView.classList.remove('hidden');
+    
+    // Update user info
+    if (userAuth?.user) {
+      const userInitials = document.getElementById('userInitials');
+      const userName = document.getElementById('userName');
+      const userEmail = document.getElementById('userEmail');
+      
+      if (userInitials) {
+        const initials = userAuth.user.name
+          ?.split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .toUpperCase() || 'U';
+        userInitials.textContent = initials;
+      }
+      if (userName) userName.textContent = userAuth.user.name || 'User';
+      if (userEmail) userEmail.textContent = userAuth.user.email || '';
+    }
+    
+  // Initialize features
+  initializeUpload();
+  await loadPersistedResume();
+  initializeButtons();
+  await hydrateLastResult();
+  startJobDetection();
+  updateTailorButton();
+  } else {
+    // Show auth view
+    const authView = document.getElementById('authView');
+    const mainView = document.getElementById('mainView');
+    if (authView) authView.classList.remove('hidden');
+    if (mainView) mainView.classList.add('hidden');
   }
 });
 
 async function checkBackendHealth(manual: boolean) {
-  if (!healthChip) return;
+  const hc = getHealthChip();
+  if (!hc) return;
   updateHealthChip('checking', manual ? 'Re-checking…' : 'Checking backend…');
 
   const controller = new AbortController();
@@ -145,12 +216,15 @@ async function checkBackendHealth(manual: boolean) {
 }
 
 function updateHealthChip(state: HealthState, text: string) {
-  if (!healthChip) return;
-  healthChip.dataset.state = state;
-  const textNode = healthChip.querySelector('.health-text');
+  const hc = getHealthChip();
+  if (!hc) return;
+  hc.dataset.state = state;
+  const textNode = hc.querySelector('.health-text');
   if (textNode) {
     textNode.textContent = text;
   }
+  // Persist last health status for next popup open
+  chrome.storage.local.set({ lastHealthStatus: { state, text, ts: Date.now() } }).catch(() => {});
 }
 
 // Authentication functions
@@ -162,14 +236,12 @@ async function checkAuthStatus(): Promise<boolean> {
     const cached = await chrome.storage.local.get(AUTH_CACHE_KEY);
     
     if (cached[AUTH_CACHE_KEY] && cached[AUTH_CACHE_KEY].authenticated && cached[AUTH_CACHE_KEY].user) {
-      console.log('✅ Found cached auth, showing UI immediately');
+      console.log('✅ Found cached auth data');
       // Use cached data immediately for faster UI
       userAuth = cached[AUTH_CACHE_KEY];
       isAuthenticated = true;
-      showAuthenticatedUI(userAuth.user);
       
       // Verify in background (don't block UI)
-      // Use setTimeout to avoid blocking the UI thread
       setTimeout(() => verifyAuthInBackground(), 100);
       return true;
     }
@@ -188,37 +260,32 @@ async function checkAuthStatus(): Promise<boolean> {
       if (!data.authenticated) {
         await chrome.storage.local.remove(AUTH_CACHE_KEY);
         isAuthenticated = false;
-        showLoginPrompt();
         return false;
       } else {
         // Cache the auth data
         userAuth = data;
         isAuthenticated = true;
         await chrome.storage.local.set({ [AUTH_CACHE_KEY]: data });
-        showAuthenticatedUI(data.user);
         return true;
       }
     } else {
       console.log('❌ Server returned non-OK status:', response.status);
       await chrome.storage.local.remove(AUTH_CACHE_KEY);
       isAuthenticated = false;
-      showLoginPrompt();
       return false;
     }
   } catch (error) {
     console.error('⚠️ Auth check failed:', error);
-    // If we have cache, still show authenticated UI (offline mode)
+    // If we have cache, still use it (offline mode)
     const cached = await chrome.storage.local.get(AUTH_CACHE_KEY);
     if (cached[AUTH_CACHE_KEY]?.user) {
       console.log('📦 Using cached auth (offline mode)');
       userAuth = cached[AUTH_CACHE_KEY];
       isAuthenticated = true;
-      showAuthenticatedUI(userAuth.user);
       return true;
     }
-    console.log('❌ No cache available, showing login');
+    console.log('❌ No cache available');
     isAuthenticated = false;
-    showLoginPrompt();
     return false;
   }
 }
@@ -243,31 +310,33 @@ async function verifyAuthInBackground() {
         isAuthenticated = true;
         await chrome.storage.local.set({ [AUTH_CACHE_KEY]: data });
       } else {
-        console.log('⚠️ Background verification: Session expired');
-        // Session expired - only clear cache and state
-        // DO NOT show login prompt if user is actively using the extension
-        await chrome.storage.local.remove(AUTH_CACHE_KEY);
-        userAuth = null;
-        isAuthenticated = false;
-        
-        // Only show login if we're not already showing authenticated UI
-        const authInfo = document.querySelector('.auth-info');
-        if (!authInfo) {
-          console.log('📋 No auth UI found, showing login prompt');
-          showLoginPrompt();
-        } else {
-          console.log('👤 Auth UI exists, not showing login (user still has UI)');
+        console.log('⚠️ Background verification: Session expired, attempting silent re-auth');
+        const success = await silentReauthenticate();
+        if (!success) {
+          await chrome.storage.local.remove(AUTH_CACHE_KEY);
+          userAuth = null;
+          isAuthenticated = false;
+          const authView = document.getElementById('authView');
+          const mainView = document.getElementById('mainView');
+          if (authView && mainView) {
+            authView.classList.remove('hidden');
+            mainView.classList.add('hidden');
+          }
         }
       }
     } else if (response.status === 401) {
-      console.log('🚫 Background verification: 401 Unauthorized');
-      // Only act if we're not already showing authenticated UI
-      const authInfo = document.querySelector('.auth-info');
-      if (!authInfo) {
+      console.log('🚫 Background verification: 401 Unauthorized, attempting silent re-auth');
+      const success = await silentReauthenticate();
+      if (!success) {
         await chrome.storage.local.remove(AUTH_CACHE_KEY);
         userAuth = null;
         isAuthenticated = false;
-        showLoginPrompt();
+        const authView = document.getElementById('authView');
+        const mainView = document.getElementById('mainView');
+        if (authView && mainView) {
+          authView.classList.remove('hidden');
+          mainView.classList.add('hidden');
+        }
       }
     }
   } catch (error) {
@@ -277,115 +346,83 @@ async function verifyAuthInBackground() {
   }
 }
 
-function showLoginPrompt() {
-  console.log('🔐 Showing login prompt');
-  isAuthenticated = false;
-  
-  // Check if we're already showing authenticated UI
-  const authInfo = document.querySelector('.auth-info');
-  if (authInfo) {
-    console.log('⚠️ Auth info already visible, not showing login prompt');
-    return; // Don't show login if already authenticated
-  }
-  
-  // Remove any existing auth section
-  const existingAuthSection = document.querySelector('.auth-section');
-  if (existingAuthSection) {
-    console.log('📋 Removing existing auth section');
-    existingAuthSection.remove();
-  }
-  
-  const authSection = document.createElement('div');
-  authSection.className = 'auth-section';
-  authSection.id = 'authSection';
-  authSection.innerHTML = `
-    <div class="auth-prompt">
-      <h3>🔐 Sign in to continue</h3>
-      <p>Sign in with Google to start tailoring your resumes</p>
-      <button id="googleLoginBtn" class="google-login-btn">
-        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0NTVjMC0uNjM5LS4wNTctMS4yNTItLjE2NC0xLjg0MUg5djMuNDgxaDQuODQ0Yy0uMjA5IDEuMTI1LS44NDMgMi4wNzgtMS43OTYgMi43MTN2Mi4yNTloMi45MDhjMS43MjgtMS4zMDUgMi43MjUtMy4yMzMgMi43MjUtNS41MjN6Ii8+CjxwYXRoIGZpbGw9IiM0Mjg1RjQiIGQ9Ik05IDE4YzIuNDMgMCA0LjQ2Ny0uODA2IDUuOTU2LTIuMTgybC0yLjkwOC0yLjI1OWMtLjgwNi41NzctMS44NzEuOTMtMy4wNDguOTNDNi42OSAxNC40ODQgNS4wMjMgMTMuMzM2IDQuODMgMTIuMjI0SDFWMTUuNmMxLjUgMi42MTQgNC4yNjYgNCAzIDYuNTU0IDEwIDEweiIvPgo8cGF0aCBmaWxsPSIjMzRBODUzIiBkPSJNNCAxMlY2LjIyNkg3LjIyNmMuMzg1IDAtLjQzIDEuMjI1LS40IDIuNzQ2cy0uNzEyIDIuNzUtMS42NDcgMy42MjJMMVYxMHptMC00LjAwNGMwLS4yMSAwLS40MiAxLS42Mk00LjAzMyA2LjY5NmMuOTU5LS45NCAyLjU0LTEuNjk3IDMuOTY3LTEuNjk3IDEuMzE1IDAgMi40LjQ3IDMuMjggMS4zNzZsMS4yMS0xLjIxQzEzLjUgMy43MjUgMTEuNDcgM0g5IDMgNy4zNiAzIDUuOTU2IDRmNUw0LjAzMyA2LjY5NnoiLz4KPHBhdGggZmlsbD0iI0VBNDMzNSIgZD0iTTkgMy41ODJjMS4zNjEgMCAyLjU4Ni40ODkgMy41NTIgMS40MzdsMi44NC0yLjg0QzE0LjAzNS0uMjU2IDExLjcxMC0xIDktMSA1LjkyNi0xIDIuOTI2IDEuNzI2IDEgNS43NGwyLjkxIDIuMjM3QzQuNjkyIDUuNzE2IDYuNjk2IDMuNTgyIDkgMy41ODJ6Ii8+CjwvZz4KPC9zdmc+">
-        Continue with Google
-      </button>
-      <p class="auth-note">Free: 5 tailorings/month • Premium: Unlimited + ATS analysis</p>
-    </div>
-  `;
-  
-  const app = document.getElementById('app') as HTMLElement;
-  app.appendChild(authSection);
-  
-  // Add event listener for the login button
-  const googleLoginBtn = document.getElementById('googleLoginBtn') as HTMLButtonElement;
-  googleLoginBtn.addEventListener('click', loginWithGoogle);
-  
-  // Hide other sections
-  uploadArea.style.display = 'none';
-  resultsSection.style.display = 'none';
-  jobDetection.style.display = 'none';
-}
-
-function showAuthenticatedUI(user: any) {
-  console.log('👤 Showing authenticated UI for:', user.name);
-  isAuthenticated = true;
-  
-  // Remove login section if it exists
-  const authSection = document.getElementById('authSection');
-  if (authSection) {
-    console.log('📋 Removing login section');
-    authSection.remove();
-  }
-  
-  // Check if auth info already exists - don't duplicate
-  const existingAuthInfo = document.querySelector('.auth-info');
-  if (existingAuthInfo) {
-    console.log('✅ Auth UI already exists, skipping');
-    // Make sure upload area is visible
-    uploadArea.style.display = 'block';
-    jobDetection.style.display = 'block';
-    return; // Don't create duplicate auth UI
-  }
-  
-  const authInfo = document.createElement('div');
-  authInfo.className = 'auth-info';
-  authInfo.innerHTML = `
-    <div class="user-info">
-      <img src="${user.picture || ''}" alt="${user.name}" class="user-avatar">
-      <div class="user-details">
-        <span class="user-name">${user.name}</span>
-        <span class="user-plan">${user.subscription?.plan || 'free'} plan</span>
-      </div>
-      <button class="logout-btn" id="logoutBtn">Logout</button>
-    </div>
-  `;
-  
-  const app = document.getElementById('app') as HTMLElement;
-  app.insertBefore(authInfo, app.firstChild);
-  
-  // Add logout button event listener
-  const logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', logout);
-  }
-  
-  // Show main sections
-  uploadArea.style.display = 'block';
-  jobDetection.style.display = 'block';
+// Attempt to refresh backend session without UI by using Chrome identity token
+async function silentReauthenticate(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      chrome.identity.getAuthToken({ interactive: false }, async (token) => {
+        if (chrome.runtime.lastError || !token) {
+          console.warn('Silent re-auth failed to get token:', chrome.runtime.lastError?.message);
+          resolve(false);
+          return;
+        }
+        try {
+          const resp = await fetch(getApiUrl('/api/v1/auth/google/verify'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+          });
+          if (!resp.ok) {
+            resolve(false);
+            return;
+          }
+          const data = await resp.json();
+          userAuth = data;
+          isAuthenticated = true;
+          await chrome.storage.local.set({ [AUTH_CACHE_KEY]: data });
+          // Keep main view visible
+          const authView = document.getElementById('authView');
+          const mainView = document.getElementById('mainView');
+          if (authView && mainView) {
+            authView.classList.add('hidden');
+            mainView.classList.remove('hidden');
+          }
+          // Update user display if available
+          const userInitials = document.getElementById('userInitials');
+          const userName = document.getElementById('userName');
+          const userEmail = document.getElementById('userEmail');
+          if (userInitials && data?.user?.name) {
+            const initials = data.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+            userInitials.textContent = initials || 'U';
+          }
+          if (userName && data?.user?.name) userName.textContent = data.user.name;
+          if (userEmail && data?.user?.email) userEmail.textContent = data.user.email;
+          resolve(true);
+        } catch (e) {
+          console.warn('Silent re-auth verify failed:', e);
+          resolve(false);
+        }
+      });
+    } catch (e) {
+      console.warn('Silent re-auth exception:', e);
+      resolve(false);
+    }
+  });
 }
 
 function loginWithGoogle() {
+  console.log('🔐 loginWithGoogle() called');
   const googleLoginBtn = document.getElementById('googleLoginBtn') as HTMLButtonElement;
   if (googleLoginBtn) {
     googleLoginBtn.disabled = true;
-    googleLoginBtn.textContent = 'Signing in...';
+    const span = googleLoginBtn.querySelector('span');
+    if (span) span.textContent = 'Signing in...';
   }
   
+  console.log('📞 Calling chrome.identity.getAuthToken...');
   // Use Chrome's identity API for OAuth
   chrome.identity.getAuthToken({ interactive: true }, async (token) => {
+    console.log('🎫 Token received:', token ? 'Yes' : 'No');
     if (chrome.runtime.lastError) {
       console.error('Authentication failed:', chrome.runtime.lastError);
       setStatus('Authentication failed. Please try again.');
       if (googleLoginBtn) {
         googleLoginBtn.disabled = false;
-        googleLoginBtn.innerHTML = '<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0NTVjMC0uNjM5LS4wNTctMS4yNTItLjE2NC0xLjg0MUg5djMuNDgxaDQuODQ0Yy0uMjA5IDEuMTI1LS44NDMgMi4wNzgtMS43OTYgMi43MTN2Mi4yNTloMi45MDhjMS43MjgtMS4zMDUgMi43MjUtMy4yMzMgMi43MjUtNS41MjN6Ii8+CjxwYXRoIGZpbGw9IiM0Mjg1RjQiIGQ9Ik05IDE4YzIuNDMgMCA0LjQ2Ny0uODA2IDUuOTU2LTIuMTgybC0yLjkwOC0yLjI1OWMtLjgwNi41NzctMS44NzEuOTMtMy4wNDguOTNDNi42OSAxNC40ODQgNS4wMjMgMTMuMzM2IDQuODMgMTIuMjI0SDFWMTUuNmMxLjUgMi42MTQgNC4yNjYgNCAzIDYuNTU0IDEwIDEweiIvPgo8cGF0aCBmaWxsPSIjMzRBODUzIiBkPSJNNCAxMlY2LjIyNkg3LjIyNmMuMzg1IDAtLjQzIDEuMjI1LS40IDIuNzQ2cy0uNzEyIDIuNzUtMS42NDcgMy42MjJMMVYxMHptMC00LjAwNGMwLS4yMSAwLS40MiAxLS42Mk00LjAzMyA2LjY5NmMuOTU5LS45NCAyLjU0LTEuNjk3IDMuOTY3LTEuNjk3IDEuMzE1IDAgMi40LjQ3IDMuMjggMS4zNzZsMS4yMS0xLjIxQzEzLjUgMy43MjUgMTEuNDcgM0g5IDMgNy4zNiAzIDUuOTU2IDRmNUw0LjAzMyA2LjY5NnoiLz4KPHBhdGggZmlsbD0iI0VBNDMzNSIgZD0iTTkgMy41ODJjMS4zNjEgMCAyLjU4Ni40ODkgMy41NTIgMS40MzdsMi44NC0yLjg0QzE0LjAzNS0uMjU2IDExLjcxMC0xIDktMSA1LjkyNi0xIDIuOTI2IDEuNzI2IDEgNS43NGwyLjkxIDIuMjM3QzQuNjkyIDUuNzE2IDYuNjk2IDMuNTgyIDkgMy41ODJ6Ii8+CjwvZz4KPC9zdmc+">Continue with Google';
+        const span = googleLoginBtn.querySelector('span');
+        if (span) span.textContent = 'Continue with Google';
       }
       return;
     }
@@ -402,14 +439,36 @@ function loginWithGoogle() {
           credentials: 'include'
         });
         
-        if (response.ok) {
+  if (response.ok) {
           const authData = await response.json();
           userAuth = authData;
+          isAuthenticated = true;
           
           // Cache auth data for persistence
           await chrome.storage.local.set({ [AUTH_CACHE_KEY]: authData });
           
-          showAuthenticatedUI(authData.user);
+          // Switch to main view
+          const authView = document.getElementById('authView');
+          const mainView = document.getElementById('mainView');
+          if (authView) authView.classList.add('hidden');
+          if (mainView) mainView.classList.remove('hidden');
+          
+          // Update user info
+          const userInitials = document.getElementById('userInitials');
+          const userName = document.getElementById('userName');
+          const userEmail = document.getElementById('userEmail');
+          
+          if (userInitials) {
+            const initials = authData.user.name
+              ?.split(' ')
+              .map((n: string) => n[0])
+              .join('')
+              .toUpperCase() || 'U';
+            userInitials.textContent = initials;
+          }
+          if (userName) userName.textContent = authData.user.name || 'User';
+          if (userEmail) userEmail.textContent = authData.user.email || '';
+          
           setStatus('Successfully signed in!');
           
           // Initialize app features after successful login
@@ -420,15 +479,53 @@ function loginWithGoogle() {
           startJobDetection();
           updateTailorButton();
         } else {
-          const errorData = await response.json().catch(() => ({ error: 'Backend authentication failed' }));
-          throw new Error(errorData.error || 'Backend authentication failed');
+          // Try to read a structured error; fallback to status-based messages
+          let apiError = 'Backend authentication failed';
+          try {
+            const errorData = await response.json();
+            if (errorData?.error) apiError = errorData.error;
+          } catch {}
+
+          // If unauthorized, clear cached token so the next attempt is fresh
+          if (response.status === 401 && token) {
+            chrome.identity.removeCachedAuthToken({ token }, () => console.log('Removed cached token after 401'));
+          }
+
+          const err = new Error(apiError) as Error & { status?: number };
+          (err as any).status = response.status;
+          throw err;
         }
       } catch (error) {
         console.error('Token verification failed:', error);
-        setStatus(`Authentication failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
+        // Classify error for better UX
+        let userMessage = 'Authentication failed. Please try again.';
+        const isOffline = !navigator.onLine;
+        if (isOffline) {
+          userMessage = 'You appear offline. Reconnect and retry Google sign‑in.';
+        } else if (error instanceof Error) {
+          const msg = error.message.toLowerCase();
+          if (msg.includes('invalid') || msg.includes('token')) {
+            userMessage = 'Google token invalid or expired. Click to re-authenticate.';
+            // Proactively clear cached token so next attempt is fresh
+            chrome.identity.getAuthToken({ interactive: false }, (t) => {
+              if (t) chrome.identity.removeCachedAuthToken({ token: t }, () => console.log('Cleared stale cached token'));
+            });
+          } else if (msg.includes('backend')) {
+            userMessage = 'Backend session could not be established. Try again shortly.';
+          } else if (msg.includes('fetch') || msg.includes('network')) {
+            userMessage = 'Network issue during sign‑in. Check connection and retry.';
+          } else {
+            userMessage = `Auth error: ${error.message}`;
+          }
+        }
+        setStatus(userMessage);
         if (googleLoginBtn) {
           googleLoginBtn.disabled = false;
-          googleLoginBtn.innerHTML = '<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0NTVjMC0uNjM5LS4wNTctMS4yNTItLjE2NC0xLjg0MUg5djMuNDgxaDQuODQ0Yy0uMjA5IDEuMTI1LS44NDMgMi4wNzgtMS43OTYgMi43MTN2Mi4yNTloMi45MDhjMS43MjgtMS4zMDUgMi43MjUtMy4yMzMgMi43MjUtNS41MjN6Ii8+CjxwYXRoIGZpbGw9IiM0Mjg1RjQiIGQ9Ik05IDE4YzIuNDMgMCA0LjQ2Ny0uODA2IDUuOTU2LTIuMTgybC0yLjkwOC0yLjI1OWMtLjgwNi41NzctMS44NzEuOTMtMy4wNDguOTNDNi42OSAxNC40ODQgNS4wMjMgMTMuMzM2IDQuODMgMTIuMjI0SDFWMTUuNmMxLjUgMi42MTQgNC4yNjYgNCAzIDYuNTU0IDEwIDEweiIvPgo8cGF0aCBmaWxsPSIjMzRBODUzIiBkPSJNNCAxMlY2LjIyNkg3LjIyNmMuMzg1IDAtLjQzIDEuMjI1LS40IDIuNzQ2cy0uNzEyIDIuNzUtMS42NDcgMy42MjJMMVYxMHptMC00LjAwNGMwLS4yMSAwLS40MiAxLS42Mk00LjAzMyA2LjY5NmMuOTU5LS45NCAyLjU0LTEuNjk3IDMuOTY3LTEuNjk3IDEuMzE1IDAgMi40LjQ3IDMuMjggMS4zNzZsMS4yMS0xLjIxQzEzLjUgMy43MjUgMTEuNDcgM0g5IDMgNy4zNiAzIDUuOTU2IDRmNUw0LjAzMyA2LjY5NnoiLz4KPHBhdGggZmlsbD0iI0VBNDMzNSIgZD0iTTkgMy41ODJjMS4zNjEgMCAyLjU4Ni40ODkgMy41NTIgMS40MzdsMi44NC0yLjg0QzE0LjAzNS0uMjU2IDExLjcxMC0xIDktMSA1LjkyNi0xIDIuOTI2IDEuNzI2IDEgNS43NGwyLjkxIDIuMjM3QzQuNjkyIDUuNzE2IDYuNjk2IDMuNTgyIDkgMy41ODJ6Ii8+CjwvZz4KPC9zdmc+">Continue with Google';
+          const span = googleLoginBtn.querySelector('span');
+          if (span) span.textContent = 'Continue with Google';
+          // Provide quick retry affordance by adding a temporary pulse class
+          googleLoginBtn.classList.add('retry-ready');
+          setTimeout(() => googleLoginBtn.classList.remove('retry-ready'), 4000);
         }
       }
     }
@@ -472,8 +569,21 @@ function initializeUpload() {
     return;
   }
   uploadInitialized = true;
+  if (!uploadArea || !fileInput) {
+    console.warn('Upload area or file input missing - simplified UI maybe not loaded yet');
+    return;
+  }
 
   fileInput.addEventListener('change', handleFileSelect);
+
+  // Support clicking the primary button explicitly
+  const uploadBtn = document.getElementById('uploadBtn') as HTMLButtonElement | null;
+  if (uploadBtn) {
+    uploadBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      fileInput.click();
+    });
+  }
 
   uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -485,11 +595,23 @@ function initializeUpload() {
   });
 
   uploadArea.addEventListener('drop', handleDrop);
+
+  // Accessibility: allow keyboard activation of dropzone choose file
+  const dropzone = document.getElementById('uploadDropzone');
+  if (dropzone) {
+    dropzone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+  }
+
 }
 
 function handleDrop(e: DragEvent) {
   e.preventDefault();
-  uploadArea.classList.remove('dragover');
+  if (uploadArea) uploadArea.classList.remove('dragover');
   
   const files = e.dataTransfer?.files;
   if (files && files.length > 0) {
@@ -553,8 +675,7 @@ function updateJobDetectionUI(job: any) {
     detectedCompany.textContent = job.company;
     jobDetection.classList.add('active');
     
-    // Update tailor button text to be more dynamic
-    tailorBtn.innerHTML = '⚡ Tailor for This Job';
+    // Location dropdown removed
     
     // Update debug info
     if (debugInfo) {
@@ -566,8 +687,7 @@ function updateJobDetectionUI(job: any) {
     jobDetected.style.display = 'none';
     jobDetection.classList.remove('active');
     
-    // Update tailor button text
-    tailorBtn.innerHTML = '🔍 Find a Job First';
+    // Location dropdown removed
     
     // Update debug info with current tab info
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -587,23 +707,15 @@ function initializeButtons() {
     return;
   }
   buttonsInitialized = true;
-
-  tailorBtn.addEventListener('click', handleTailorJob);
-  if (IS_AI_ANALYSIS_ENABLED) {
+  if (tailorBtn) tailorBtn.addEventListener('click', handleTailorJob);
+  if (IS_AI_ANALYSIS_ENABLED && aiAnalyzeBtn) {
     aiAnalyzeBtn.addEventListener('click', handleAIAnalysis);
   }
-  downloadBtn.addEventListener('click', handleDownload);
-  copyBtn.addEventListener('click', handleCopy);
-  
-  // Initialize refresh button
-  const refreshBtn = document.getElementById('refreshResultsBtn') as HTMLButtonElement;
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', clearResults);
-  }
-  
-  uploadArea.addEventListener('click', () => {
-    fileInput.click();
-  });
+  if (downloadBtn) downloadBtn.addEventListener('click', handleDownload);
+  if (copyBtn) copyBtn.addEventListener('click', handleCopy);
+
+  const refreshBtn = document.getElementById('refreshResultsBtn') as HTMLButtonElement | null;
+  if (refreshBtn) refreshBtn.addEventListener('click', clearResults);
 }
 
 async function loadPersistedResume() {
@@ -612,7 +724,7 @@ async function loadPersistedResume() {
     if (stored[RESUME_SESSION_KEY]) {
       currentResume = stored[RESUME_SESSION_KEY] as ResumeSessionData;
       resumeFileCache = null; // rebuild lazily from base64
-      showResumeStatus(`✓ ${currentResume.name} (${formatBytes(currentResume.size)}) ready for this session`, 'success', currentResume.textPreview);
+      showResumeStatus(`✓ ${currentResume.name} loaded`, 'success', currentResume.textPreview);
     }
   } catch (error) {
     console.error('Failed to load resume from session storage', error);
@@ -627,22 +739,22 @@ async function hydrateLastResult() {
     if (cachedResult?.success) {
       lastTailoredResult = cachedResult;
       showResults(cachedResult);
-      downloadBtn.disabled = false;
-      copyBtn.disabled = false;
+  if (downloadBtn) downloadBtn.disabled = false;
+  if (copyBtn) copyBtn.disabled = false;
       setStatus('Loaded your most recent tailored resume.');
     } else {
       lastTailoredResult = null;
-      resultsSection.classList.add('hidden');
-      downloadBtn.disabled = true;
-      copyBtn.disabled = true;
+  if (resultsSection) resultsSection.classList.add('hidden');
+  if (downloadBtn) downloadBtn.disabled = true;
+  if (copyBtn) copyBtn.disabled = true;
       setStatus('Ready to tailor your resume!');
     }
   } catch (error) {
     console.error('Failed to load cached tailoring result', error);
     lastTailoredResult = null;
-    resultsSection.classList.add('hidden');
-    downloadBtn.disabled = true;
-    copyBtn.disabled = true;
+  if (resultsSection) resultsSection.classList.add('hidden');
+  if (downloadBtn) downloadBtn.disabled = true;
+  if (copyBtn) copyBtn.disabled = true;
     setStatus('Ready to tailor your resume!');
   }
 
@@ -678,13 +790,13 @@ async function handleFile(file: File) {
     resumeFileCache = new File([buffer], record.name, { type: record.mimeType });
     await persistResume(record);
 
-    showResumeStatus(`✓ ${record.name} (${formatBytes(record.size)}) saved for this session`, 'success', record.textPreview);
+    showResumeStatus(`✓ ${record.name} saved`, 'success', record.textPreview);
     updateTailorButton();
   } catch (error) {
     console.error('Failed to process resume upload', error);
     showResumeStatus('Error processing file', 'error');
   } finally {
-    fileInput.value = '';
+  if (fileInput) fileInput.value = '';
   }
 }
 
@@ -707,7 +819,7 @@ function validateFile(file: File): boolean {
   const hasValidExtension = /\.(pdf|doc|docx|txt)$/i.test(file.name);
 
   if (!validTypes.includes(file.type) && !hasValidExtension) {
-    showResumeStatus('Please select a PDF, DOC, DOCX, or TXT file', 'error');
+    showResumeStatus('Invalid file format. Please upload a PDF, DOC, DOCX, or TXT file.', 'error');
     return false;
   }
 
@@ -729,6 +841,7 @@ async function persistResume(record: ResumeSessionData) {
 }
 
 function showResumeStatus(message: string, type: 'success' | 'error', preview?: string) {
+  if (!resumeStatus) return;
   resumeStatus.textContent = message;
   resumeStatus.className = `resume-status ${type}`;
   resumeStatus.classList.remove('hidden');
@@ -746,25 +859,18 @@ function showResumeStatus(message: string, type: 'success' | 'error', preview?: 
 }
 
 function updateTailorButton() {
-  const tailorSection = document.getElementById('tailorSection') as HTMLElement;
-
-  if (currentResume) {
-    tailorSection.classList.remove('hidden');
-    
-    // Check if job is detected
-    if (currentJob && currentJob.title) {
-      tailorBtn.disabled = false;
-    } else {
-      tailorBtn.disabled = true;
-    }
-  } else {
-    tailorBtn.disabled = true;
-    tailorSection.classList.add('hidden');
+  if (!tailorBtn) return;
+  const tailorSection = document.getElementById('tailorSection') as HTMLElement | null;
+  if (tailorSection) {
+    tailorSection.classList.remove('hidden'); // Always visible; use disabled state to guide user
   }
+  // Enable only when resume uploaded AND a job is detected
+  const canTailor = !!(currentResume && currentJob && currentJob.title);
+  tailorBtn.disabled = !canTailor;
 }
 
 function handleTailorJob() {
-  if (!currentResume) {
+  if (!currentResume || !tailorBtn) {
     setStatus('Please upload a resume first');
     return;
   }
@@ -797,17 +903,17 @@ function handleAIAnalysis() {
   }
 
   setStatus('Starting AI analysis...');
-  setButtonLoading(aiAnalyzeBtn, true);
+  if (aiAnalyzeBtn) setButtonLoading(aiAnalyzeBtn, true);
 
   void analyzeResumeWithAI().finally(() => {
-    setButtonLoading(aiAnalyzeBtn, false);
+  if (aiAnalyzeBtn) setButtonLoading(aiAnalyzeBtn, false);
   });
 }
 
 async function tailorResume() {
   if (!currentResume || !currentJob) {
     setStatus('Missing resume or job data');
-    setButtonLoading(tailorBtn, false);
+  if (tailorBtn) setButtonLoading(tailorBtn, false);
     return;
   }
 
@@ -821,100 +927,101 @@ async function tailorResume() {
     formData.append('resume', resumeFile);
     formData.append('jobPosting', JSON.stringify(currentJob));
 
-    console.log('🚀 Sending tailoring request...');
-    
-    const response = await fetch(getApiUrl('/api/v1/analyze-job'), {
+    const apiUrl = getApiUrl('/api/v1/analyze-job');
+    console.log('🚀 Calling backend:', apiUrl);
+    console.log('📋 Job data:', { title: currentJob.title, company: currentJob.company });
+
+    const response = await fetch(apiUrl, {
       method: 'POST',
       body: formData,
       credentials: 'include'
     });
-
-    console.log('📥 Response status:', response.status);
+    
+    console.log('📡 Response status:', response.status);
 
     if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null);
-      const errorDetail = errorPayload?.detail || errorPayload?.error || response.statusText;
-      
-      console.error('❌ API Error:', {
-        status: response.status,
-        error: errorPayload?.error,
-        detail: errorPayload?.detail
-      });
-      
-      // Handle specific HTTP status codes
-      if (response.status === 401) {
-        console.log('⚠️ 401 Unauthorized - Checking auth status...');
-        
-        // Clear cached auth since it's no longer valid
-        await chrome.storage.local.remove(AUTH_CACHE_KEY);
-        
-        // Wait a moment for session cookie to propagate
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Verify session is actually established
-        const authCheck = await fetch(getApiUrl('/api/v1/auth/status'), {
-          credentials: 'include',
-          cache: 'no-cache'
-        });
-        
-        if (authCheck.ok) {
-          const authData = await authCheck.json();
-          if (authData.authenticated) {
-            console.log('✅ Session is valid after waiting - you can retry');
-            throw new Error('🔄 Session was still connecting. Please try again.');
+      // Minimal unified error handling – backend is solid, handle only essentials
+      if (response.status === 429) {
+        // Respect Retry-After header when provided by backend/provider
+        const retryAfter = response.headers.get('Retry-After');
+        let seconds = 15;
+        if (retryAfter) {
+          const numeric = parseInt(retryAfter, 10);
+          if (!Number.isNaN(numeric)) {
+            seconds = Math.max(5, Math.min(120, numeric));
+          } else {
+            const retryDate = new Date(retryAfter);
+            const deltaMs = retryDate.getTime() - Date.now();
+            if (!Number.isNaN(retryDate.getTime()) && deltaMs > 0) {
+              seconds = Math.max(5, Math.min(120, Math.ceil(deltaMs / 1000)));
+            }
           }
         }
-        
-        console.log('❌ Session invalid - need to re-authenticate');
+        startRateLimitCooldown(seconds);
+        return;
+      }
+      if (response.status === 401) {
+        await chrome.storage.local.remove(AUTH_CACHE_KEY);
         isAuthenticated = false;
         userAuth = null;
-        
-        throw new Error('🔐 Session expired (backend restarted). Please sign in again.');
+        throw new Error('Session expired. Please sign in again.');
       }
-      
-      if (response.status === 429) {
-        throw new Error('⏱️ Rate limit exceeded. Please wait a moment before trying again.');
-      }
-      
-      if (response.status === 503) {
-        throw new Error(`⏳ ${errorDetail || 'AI service temporarily unavailable. Please try again in a moment.'}`);
-      }
-      
-      if (response.status === 500) {
-        // Use the error detail from backend
-        throw new Error(`⚠️ ${errorDetail}`);
-      }
-      
-      // Generic error
-      throw new Error(`❌ Request failed (${response.status}): ${errorDetail}`);
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `Request failed (${response.status})`);
     }
 
-    const result = await response.json();
+    const result = await response.json().catch(() => ({ success:false, error:'Invalid JSON response' }));
     
-    if (!result.success) {
-      console.error('❌ Result Error:', result);
-      throw new Error(result.detail || result.error || 'Unknown error from tailoring service');
-    }
+    console.log('📦 Backend result:', result);
+    
+    if (!result.success) throw new Error(result.detail || result.error || 'Tailoring failed');
 
-    console.log('✅ Tailoring successful, result:', result);
     setStatus('Resume tailored successfully!');
-    setButtonLoading(tailorBtn, false);
-    console.log('🎯 About to call showResults');
+  if (tailorBtn) setButtonLoading(tailorBtn, false);
     showResults(result);
 
     lastTailoredResult = result;
-    downloadBtn.disabled = false;
-    copyBtn.disabled = false;
+  if (downloadBtn) downloadBtn.disabled = false;
+  if (copyBtn) copyBtn.disabled = false;
 
     await chrome.storage.local.set({
       [LAST_RESULT_KEY]: result,
       lastTailoredTime: Date.now()
     });
   } catch (error) {
-    console.error('Tailoring error', error);
+    console.error('❌ Tailoring error:', error);
+    console.error('Error details:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      error: error
+    });
     setStatus(`Error: ${(error as Error).message}`);
-    setButtonLoading(tailorBtn, false);
+  if (tailorBtn) setButtonLoading(tailorBtn, false);
   }
+}
+
+let rateLimitTimer: number | null = null;
+function startRateLimitCooldown(seconds: number) {
+  if (!tailorBtn) return;
+  if (rateLimitTimer) {
+    window.clearInterval(rateLimitTimer);
+    rateLimitTimer = null;
+  }
+  let remaining = seconds;
+  tailorBtn.disabled = true;
+  setButtonLoading(tailorBtn, false);
+  setStatus(`⏱️ Rate limit hit. Please wait ${remaining}s before retrying.`);
+  rateLimitTimer = window.setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      window.clearInterval(rateLimitTimer!);
+      rateLimitTimer = null;
+      setStatus('You can try tailoring again now.');
+      updateTailorButton();
+    } else {
+      setStatus(`⏱️ Rate limit hit. Please wait ${remaining}s before retrying.`);
+    }
+  }, 1000);
 }
 
 // NEW: AI-powered resume analysis function
@@ -1014,7 +1121,7 @@ function showAIAnalysisResults(analysisText: string) {
     aiSection = document.createElement('div');
     aiSection.id = 'aiAnalysisSection';
     aiSection.className = 'analysis-section';
-    resultsSection.appendChild(aiSection);
+  if (resultsSection) resultsSection.appendChild(aiSection);
   }
 
   aiSection.innerHTML = `
@@ -1037,25 +1144,16 @@ function showAIAnalysisResults(analysisText: string) {
     });
   }
 
-  resultsSection.classList.remove('hidden');
+  if (resultsSection) resultsSection.classList.remove('hidden');
 }
 
 function showResults(data: any) {
-  console.log('🎯 showResults called with data:', data);
-  console.log('🎯 resultsSection element:', resultsSection);
-  console.log('🎯 resultsContent element:', resultsContent);
-  
   lastTailoredResult = data;
-  console.log('📋 Removing hidden class from resultsSection');
-  resultsSection.classList.remove('hidden');
   
-  // Force visibility and add visual confirmation
-  resultsSection.style.display = 'block';
-  resultsSection.style.backgroundColor = '#f0f8ff';
-  resultsSection.style.border = '2px solid #0073b1';
-  
-  console.log('📋 resultsSection classes after removal:', resultsSection.classList.toString());
-  console.log('📋 resultsSection style display:', resultsSection.style.display);
+  if (resultsSection) {
+    resultsSection.classList.remove('hidden');
+    resultsSection.style.display = 'block';
+  }
 
   const summary = escapeHtml(data.tailored?.professional_summary || 'Not available');
   const skills = (data.tailored?.key_skills || []).map((skill: string) => `<li>${escapeHtml(skill)}</li>`).join('');
@@ -1167,6 +1265,7 @@ function showResults(data: any) {
       </div>
     `).join('');
 
+
   const resumePreview = renderResumePreview(data);
   const coverLetterPoints = (data.application_strategy?.cover_letter_points || []).map((point: string) => `<li>${escapeHtml(point)}</li>`).join('');
   const interviewTopics = (data.application_strategy?.interview_topics || []).map((topic: string) => `<li>${escapeHtml(topic)}</li>`).join('');
@@ -1183,6 +1282,7 @@ function showResults(data: any) {
   const currentJobTitle = currentJob?.title || 'this position';
   const currentCompany = currentJob?.company || 'this company';
   
+  if (!resultsContent) return;
   resultsContent.innerHTML = `
     <!-- Header with success animation -->
     <div style="background: linear-gradient(135deg, #0073b1, #005885); color: white; padding: 20px; border-radius: 12px; margin: 10px 0; text-align: center; box-shadow: 0 4px 20px rgba(0,115,177,0.3);">
@@ -1255,6 +1355,17 @@ function showResults(data: any) {
       </div>
     </div>
 
+    <!-- Recommended Projects (from backend) -->
+    ${projects.length ? `
+    <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h4 style="margin:0;color:#0073b1;font-size:16px;">🧭 Real‑world Projects</h4>
+        <span style="font-size:11px;color:#6B7280;">Grounded in this JD</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;">${projectMarkup}</div>
+    </div>
+    ` : ''}
+
     <!-- Match Score & Analytics -->
     <div style="background: linear-gradient(135deg, #4caf50, #8bc34a); color: white; border-radius: 12px; padding: 20px; margin: 15px 0; text-align: center; box-shadow: 0 4px 20px rgba(76,175,80,0.3);">
       <h4 style="margin: 0 0 15px 0; font-size: 18px;">📊 Strict AI Match Analysis</h4>
@@ -1295,7 +1406,7 @@ function showResults(data: any) {
     </div>
   `;
   
-  console.log('📋 Results content set, innerHTML length:', resultsContent.innerHTML.length);
+  if (resultsContent) console.log('📋 Results content set, innerHTML length:', resultsContent.innerHTML.length);
   
   /* Original complex content - commented out for now
   resultsContent.innerHTML = `
@@ -1412,14 +1523,14 @@ async function clearResults() {
     lastTailoredResult = null;
     
     // Hide results section
-    resultsSection.classList.add('hidden');
+  if (resultsSection) resultsSection.classList.add('hidden');
     
     // Disable action buttons
-    downloadBtn.disabled = true;
-    copyBtn.disabled = true;
+  if (downloadBtn) downloadBtn.disabled = true;
+  if (copyBtn) copyBtn.disabled = true;
     
     // Clear results content
-    resultsContent.innerHTML = '';
+  if (resultsContent) resultsContent.innerHTML = '';
     
     setStatus('Results cleared. Ready to tailor for a new job!');
     
@@ -1467,7 +1578,7 @@ function setStatus(message: string) {
 chrome.runtime.onMessage.addListener((message: TailorResultMessage) => {
   if (message.type === MessageType.TailorResult) {
     setStatus('Resume tailored successfully!');
-    setButtonLoading(tailorBtn, false);
+  if (tailorBtn) setButtonLoading(tailorBtn, false);
     showResults(message.result);
   }
 });
