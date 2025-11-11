@@ -5,7 +5,8 @@ const sanitizeBaseUrl = (value?: string): string => {
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
 };
 
-const fallbackApiBase = 'http://localhost:4000';
+// Production URL as default - works out of the box
+const fallbackApiBase = 'https://resumeit-cdqp.onrender.com';
 const fallbackPremiumUrl = 'https://resumeit.ai/premium?source=extension';
 
 const sanitizeUrl = (value?: string): string => {

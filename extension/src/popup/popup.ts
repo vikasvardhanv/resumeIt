@@ -32,7 +32,7 @@ let uploadArea: HTMLElement | null = null;
 let fileInput: HTMLInputElement | null = null;
 let resumeStatus: HTMLElement | null = null;
 let tailorBtn: HTMLButtonElement | null = null;
-let aiAnalyzeBtn: HTMLButtonElement | null = null;
+// let aiAnalyzeBtn: HTMLButtonElement | null = null; // Removed - AI Analysis not configured
 let resultsSection: HTMLElement | null = null;
 let resultsContent: HTMLElement | null = null;
 let downloadBtn: HTMLButtonElement | null = null;
@@ -112,12 +112,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     logoutBtn.addEventListener('click', logout);
   }
 
-  // Optional feature gating
-  try {
-    if (!IS_AI_ANALYSIS_ENABLED && typeof aiAnalyzeBtn !== 'undefined' && aiAnalyzeBtn) {
-      aiAnalyzeBtn.style.display = 'none';
-    }
-  } catch {}
+  // Optional feature gating - AI Analysis removed
+  // (AI Analysis feature removed as it's not configured)
 
   // Quickly show last known backend health before re-checking
   try {
@@ -148,7 +144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
     resumeStatus = document.getElementById('resumeStatus') as HTMLElement | null;
     tailorBtn = document.getElementById('tailorBtn') as HTMLButtonElement | null;
-    aiAnalyzeBtn = document.getElementById('aiAnalyzeBtn') as HTMLButtonElement | null;
+    // aiAnalyzeBtn removed - AI Analysis feature not configured
     resultsSection = document.getElementById('resultsSection') as HTMLElement | null;
     resultsContent = document.getElementById('resultsContent') as HTMLElement | null;
     downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement | null;
@@ -163,6 +159,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('✅ Elements queried:', {
       tailorBtn: !!tailorBtn,
       uploadArea: !!uploadArea,
+      fileInput: !!fileInput,
+      uploadBtn: !!document.getElementById('uploadBtn'),
       jobDetection: !!jobDetection
     });
 
@@ -589,28 +587,46 @@ function initializeUpload() {
   }
   uploadInitialized = true;
   if (!uploadArea || !fileInput) {
-    console.warn('Upload area or file input missing - simplified UI maybe not loaded yet');
+    console.warn('⚠️ Upload area or file input missing - cannot initialize upload');
+    console.log('uploadArea:', uploadArea, 'fileInput:', fileInput);
     return;
   }
+
+  console.log('✅ Initializing upload functionality');
 
   fileInput.addEventListener('change', handleFileSelect);
 
   // Support clicking the primary button explicitly
   const uploadBtn = document.getElementById('uploadBtn') as HTMLButtonElement | null;
+  console.log('📤 Upload button found:', !!uploadBtn);
+
   if (uploadBtn) {
     uploadBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      fileInput.click();
+      e.stopPropagation();
+      console.log('📤 Upload button clicked, opening file dialog');
+      if (fileInput) {
+        fileInput.click();
+      } else {
+        console.error('❌ fileInput is null when button clicked!');
+      }
     });
+    console.log('✅ Upload button click listener attached');
+  } else {
+    console.error('❌ Upload button not found in DOM!');
   }
 
   uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
-    uploadArea.classList.add('dragover');
+    if (uploadArea) {
+      uploadArea.classList.add('dragover');
+    }
   });
 
   uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
+    if (uploadArea) {
+      uploadArea.classList.remove('dragover');
+    }
   });
 
   uploadArea.addEventListener('drop', handleDrop);
@@ -621,7 +637,10 @@ function initializeUpload() {
     dropzone.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        fileInput.click();
+        console.log('⌨️ Keyboard activation on dropzone');
+        if (fileInput) {
+          fileInput.click();
+        }
       }
     });
   }
@@ -697,7 +716,7 @@ function updateJobDetectionUI(job: any) {
   if (job && job.title && job.company) {
     // Show job detected
     noJobDetected.style.display = 'none';
-    jobDetected.style.display = 'flex';
+    jobDetected.style.display = 'block';
     detectedJobTitle.textContent = job.title;
     detectedCompany.textContent = job.company;
     jobDetection.classList.add('active');
@@ -710,7 +729,7 @@ function updateJobDetectionUI(job: any) {
     }
   } else {
     // Show no job detected
-    noJobDetected.style.display = 'flex';
+    noJobDetected.style.display = 'block';
     jobDetected.style.display = 'none';
     jobDetection.classList.remove('active');
 
@@ -733,9 +752,7 @@ function initializeButtons() {
   }
   buttonsInitialized = true;
   if (tailorBtn) tailorBtn.addEventListener('click', handleTailorJob);
-  if (IS_AI_ANALYSIS_ENABLED && aiAnalyzeBtn) {
-    aiAnalyzeBtn.addEventListener('click', handleAIAnalysis);
-  }
+  // AI Analysis feature removed - not configured
   if (downloadBtn) downloadBtn.addEventListener('click', handleDownload);
   if (copyBtn) copyBtn.addEventListener('click', handleCopy);
 
@@ -887,11 +904,13 @@ function updateTailorButton() {
   if (!tailorBtn) return;
   const tailorSection = document.getElementById('tailorSection') as HTMLElement | null;
   if (tailorSection) {
-    tailorSection.classList.remove('hidden'); // Always visible; use disabled state to guide user
+    tailorSection.classList.remove('hidden'); // Always visible
   }
   // Enable only when resume uploaded AND a job is detected
   const canTailor = !!(currentResume && currentJob && currentJob.title);
   tailorBtn.disabled = !canTailor;
+
+  // AI analyze button removed - feature not configured
 }
 
 function handleTailorJob() {
@@ -911,6 +930,8 @@ function handleTailorJob() {
   void tailorResume();
 }
 
+// AI Analysis feature removed - not configured
+/*
 function handleAIAnalysis() {
   if (!IS_AI_ANALYSIS_ENABLED) {
     setStatus('AI analysis is not available in this build.');
@@ -928,12 +949,10 @@ function handleAIAnalysis() {
   }
 
   setStatus('Starting AI analysis...');
-  if (aiAnalyzeBtn) setButtonLoading(aiAnalyzeBtn, true);
 
-  void analyzeResumeWithAI().finally(() => {
-  if (aiAnalyzeBtn) setButtonLoading(aiAnalyzeBtn, false);
-  });
+  void analyzeResumeWithAI();
 }
+*/
 
 async function tailorResume() {
   if (!currentResume || !currentJob) {
@@ -955,6 +974,7 @@ async function tailorResume() {
     const apiUrl = getApiUrl('/api/v1/analyze-job');
     console.log('🚀 Calling backend:', apiUrl);
     console.log('📋 Job data:', { title: currentJob.title, company: currentJob.company });
+    console.log('📄 Resume:', { name: resumeFile.name, size: resumeFile.size, type: resumeFile.type });
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -967,7 +987,52 @@ async function tailorResume() {
     if (!response.ok) {
       // Minimal unified error handling – backend is solid, handle only essentials
       if (response.status === 429) {
-        // Respect Retry-After header when provided by backend/provider
+        // Try to parse the error response to get detailed message
+        let errorMessage = '⏱️ Rate limit exceeded. Please wait before trying again.';
+        let upgradeUrl: string | null = null;
+        
+        try {
+          const errorData = await response.json();
+          console.log('📦 429 Error response:', errorData);
+          
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+          
+          if (errorData.upgradeUrl) {
+            upgradeUrl = errorData.upgradeUrl;
+          }
+        } catch (e) {
+          console.warn('Could not parse 429 error response as JSON');
+        }
+        
+        // Check if this is a subscription limit (not a rate limit)
+        if (errorMessage.toLowerCase().includes('monthly') || errorMessage.toLowerCase().includes('limit reached')) {
+          // This is a subscription limit, not a temporary rate limit
+          setStatus(`❌ ${errorMessage}`);
+          if (tailorBtn) {
+            setButtonLoading(tailorBtn, false);
+            tailorBtn.disabled = true;
+          }
+          
+          // Show upgrade option if available
+          if (upgradeUrl) {
+            const statusEl = document.getElementById('statusMessage');
+            if (statusEl) {
+              statusEl.innerHTML = `
+                ❌ ${errorMessage}<br>
+                <a href="${getApiUrl(upgradeUrl)}" target="_blank" style="color: #0073b1; text-decoration: underline;">
+                  Upgrade to Premium
+                </a>
+              `;
+            }
+          }
+          return;
+        }
+        
+        // This is a temporary rate limit - use cooldown timer
         const retryAfter = response.headers.get('Retry-After');
         let seconds = 15;
         if (retryAfter) {
@@ -1049,7 +1114,8 @@ function startRateLimitCooldown(seconds: number) {
   }, 1000);
 }
 
-// NEW: AI-powered resume analysis function
+// AI-powered resume analysis function - REMOVED (feature not configured)
+/*
 async function analyzeResumeWithAI() {
   if (!IS_AI_ANALYSIS_ENABLED) {
     setStatus('AI analysis is not configured.');
@@ -1171,6 +1237,7 @@ function showAIAnalysisResults(analysisText: string) {
 
   if (resultsSection) resultsSection.classList.remove('hidden');
 }
+*/
 
 function showResults(data: any) {
   lastTailoredResult = data;

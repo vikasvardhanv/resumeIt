@@ -468,37 +468,90 @@ export async function generateTailored (jobDescription: string, resumeText: stri
     throw new Error('No AI providers configured. Please set PRIMARY_LLM_PROVIDER / FALLBACK_* or LLM_PROVIDER_CHAIN.')
   }
 
-  console.log(`[LLM] Starting tailoring request. Providers=${providers.join(' -> ')} jobLen=${jobDescription.length} resumeLen=${resumeText.length}`)
+  console.log('\n================================================================================')
+  console.log('🚀 [LLM] STARTING TAILORING REQUEST')
+  console.log(`📋 Provider Chain: ${providers.join(' → ')}`)
+  console.log(`📊 Input sizes: Job=${jobDescription.length} chars, Resume=${resumeText.length} chars`)
+  console.log('================================================================================\n')
 
   let lastError: Error | null = null
+  const attemptedProviders: string[] = []
+  const skippedProviders: string[] = []
 
-  for (const provider of providers) {
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i]
+    const config = getApiConfig(provider)
+
+    console.log(`\n🔄 [LLM] Attempt ${i + 1}/${providers.length}: ${provider}`)
+    console.log(`   Model: ${config.model}`)
+    console.log(`   Endpoint: ${config.baseURL}`)
+
     if (!isProviderConfigured(provider)) {
-      console.warn(`[LLM] Skipping ${provider}: missing ${getProviderKeyEnvVar(provider)}`)
+      const keyName = getProviderKeyEnvVar(provider)
+      console.warn(`   ⚠️  SKIPPED: Missing ${keyName}`)
+      skippedProviders.push(`${provider} (missing key)`)
       continue
     }
 
     const skipReason = getSkipReason(provider)
     if (skipReason) {
-      console.warn(`[LLM] Skipping ${provider}: ${skipReason}`)
+      console.warn(`   ⚠️  SKIPPED: ${skipReason}`)
+      skippedProviders.push(`${provider} (${skipReason})`)
       continue
     }
 
-    console.log(`[LLM] Attempting provider ${provider}`)
+    console.log(`   ✅ API key found, attempting request...`)
+    attemptedProviders.push(provider)
 
     try {
+      const startTime = Date.now()
       const result = await generateWithProvider(provider, jobDescription, resumeText)
+      const duration = Date.now() - startTime
+
       recordProviderSuccess(provider)
-      console.log(`[LLM] Completed with provider ${provider}`)
+
+      console.log('\n==================================================================================')
+      console.log(`✅ [LLM] SUCCESS with ${provider}`)
+      console.log(`   Model: ${config.model}`)
+      console.log(`   Duration: ${duration}ms`)
+      console.log(`   Match Score: ${result.match_score}%`)
+      console.log(`   Attempted: [${attemptedProviders.join(', ')}]`)
+      if (skippedProviders.length > 0) {
+        console.log(`   Skipped: [${skippedProviders.join(', ')}]`)
+      }
+
+      // Attach metadata for frontend display
+      (result as any)._meta = {
+        provider,
+        model: config.model,
+        duration,
+        attemptedProviders,
+        skippedProviders
+      }
+
       return result
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error))
-      console.warn(`[LLM] Provider ${provider} failed: ${lastError.message}`)
+      const duration = Date.now() - Date.now()
+
+      console.error(`   ❌ FAILED: ${lastError.message}`)
+      console.error(`   Error details:`, error)
+
+      if (i < providers.length - 1) {
+        console.log(`   🔄 Falling back to next provider...`)
+      }
+
       continue
     }
   }
 
-  console.error('[LLM] All providers failed', lastError)
+  console.log('\n================================================================================')
+  console.error('❌ [LLM] ALL PROVIDERS FAILED')
+  console.error(`   Attempted: [${attemptedProviders.join(', ')}]`)
+  console.error(`   Skipped: [${skippedProviders.join(', ')}]`)
+  console.error(`   Last error: ${lastError?.message}`)
+  console.log('================================================================================\n')
+
   throw lastError ?? new Error('All AI providers failed. Please try again.')
 }
 

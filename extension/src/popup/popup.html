@@ -63,48 +63,59 @@
         </button>
       </div>
 
-      <!-- Upload Section (enhanced UI) -->
+      <!-- Upload Section (simplified) -->
       <div id="uploadArea" class="upload-section">
-        <div class="section-header">
-          <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
-          <span class="section-title">Resume Upload</span>
-        </div>
         <div class="upload-card" id="uploadCard">
           <div id="uploadDropzone" class="upload-dropzone" aria-label="Resume upload dropzone" tabindex="0">
-            <div class="upload-visual">
-              <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="8" y="6" width="28" height="36" rx="3" ry="3" stroke="#0073b1" fill="rgba(0,115,177,0.05)" />
-                <path d="M20 16h8M16 22h16M16 28h16M16 34h12" stroke="#0073b1" stroke-linecap="round" />
-                <path d="M36 14l4 4 4-4" stroke="#0073b1" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M40 12v16" stroke="#0073b1" stroke-linecap="round" />
-              </svg>
-            </div>
-            <p class="upload-title">Upload your resume</p>
-            <p class="upload-subtitle">Drag & drop or <button type="button" id="uploadBtn" class="upload-inline-btn" aria-label="Choose resume file">choose file</button></p>
-            <p class="upload-types">Accepted: PDF, DOC, DOCX, TXT • Max 5MB</p>
-            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" hidden />
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <polyline points="9 15 12 12 15 15"></polyline>
+            </svg>
+            <p class="upload-title">Upload Resume</p>
+            <button type="button" id="uploadBtn" class="upload-btn-simple" aria-label="Choose resume file">Choose File</button>
+            <p class="upload-hint">PDF, DOC, DOCX, TXT • Max 5MB</p>
+            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" hidden aria-label="Resume file input" />
             <div id="resumeStatus" class="resume-status hidden" role="status" aria-live="polite"></div>
+            <button id="clearResumeBtn" class="clear-resume-btn hidden" title="Clear resume">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
         </div>
-        <!-- Tailor Section -->
-        <div id="tailorSection" class="tailor-section">
-          <!-- Minimal job detection state (kept compact) -->
-          <div id="jobDetection" class="job-section">
-            <div id="noJobDetected" class="no-job-state">
-              <div class="refresh-hint">Open a job posting tab and return here.</div>
+        
+        <!-- Tailor Resume Section -->
+        <section id="tailorSection" class="tailor-section">
+          <div id="jobDetection" class="job-detection">
+            <!-- No Job State -->
+            <div id="noJobDetected" class="job-card">
+              <svg class="job-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+              <p class="job-status">No Job Detected</p>
+              <p class="job-hint">Open a job posting to tailor your resume</p>
             </div>
-            <div id="jobDetected" class="job-detected-state" style="display:none;">
-              <div class="job-info">
-                <div id="detectedJobTitle" class="job-title"></div>
-                <div id="detectedCompany" class="job-company"></div>
-              </div>
+
+            <!-- Job Detected State -->
+            <div id="jobDetected" class="job-card job-card-detected" style="display: none;">
+              <svg class="job-icon success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <p class="job-status">Job Detected</p>
+              <p class="job-info"><span id="detectedJobTitle"></span> at <span id="detectedCompany"></span></p>
+              <button id="tailorBtn" class="tailor-btn-compact">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                Tailor Resume
+              </button>
             </div>
           </div>
-          <button id="tailorBtn" class="tailor-btn" disabled>⚡ TAILOR JOB</button>
-        </div>
+        </section>
 
         <!-- Results Section (hidden by default) -->
         <div id="resultsSection" class="results-section hidden">

@@ -72,3 +72,10 @@ RENDER_DEPLOYMENT.md
 LANDING_PAGE_SETUP.md
 # Dockerfile, package manifests, source code, and config under version control
 landing/
+# Backup and old files
+*.bak
+*-old/
+*-broken.*
+
+# Experimental/unused code
+extension/src/utils/

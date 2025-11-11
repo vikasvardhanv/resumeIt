@@ -8,6 +8,7 @@ import { requireAuth, checkUsageLimit } from '../middleware/authMiddleware.js'
 import { analyzeJobLimiter } from '../middleware/rateLimit.js'
 import { type AuthRequest } from '../types/auth'
 import { prisma } from '../config/prisma.js'
+import { logger } from '../utils/logger.js'
 
 export const analyzeJobRouter = Router()
 
@@ -41,22 +42,45 @@ interface NormalizedJob {
 }
 
 analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, upload.single('resume'), async (req: AuthRequest, res: Response) => {
+  const requestId = crypto.randomBytes(8).toString('hex')
+
+  logger.info({
+    requestId,
+    userId: req.user?.id,
+    email: req.user?.email,
+    ip: req.ip,
+    hasFile: !!req.file,
+    fileName: req.file?.originalname,
+    fileSize: req.file?.size,
+    hasJobPosting: !!req.body.jobPosting,
+    headers: {
+      'user-agent': req.headers['user-agent'],
+      'content-type': req.headers['content-type']
+    }
+  }, '🚀 Analyze job request received')
+
   try {
     if (!req.file) {
+      logger.warn({ requestId, userId: req.user?.id }, '❌ Missing resume file')
       return res.status(400).json({ success: false, error: 'Resume file is required' })
     }
     if (!req.body.jobPosting) {
+      logger.warn({ requestId, userId: req.user?.id }, '❌ Missing job posting data')
       return res.status(400).json({ success: false, error: 'Job posting data is required' })
     }
 
+    logger.info({ requestId, userId: req.user?.id }, '📄 Parsing resume...')
     const parsedResume = await parseResume(req.file.buffer)
     const resumeText = normalizeResumeText(parsedResume.text)
+    logger.info({ requestId, userId: req.user?.id, resumeLength: resumeText.length }, '✅ Resume parsed successfully')
 
     let jobPayload: JobPostingPayload
     try {
       const raw = typeof req.body.jobPosting === 'string' ? JSON.parse(req.body.jobPosting) : req.body.jobPosting
       jobPayload = JobPostingPayloadSchema.parse(raw)
+      logger.info({ requestId, userId: req.user?.id, jobTitle: jobPayload.title, company: jobPayload.company }, '✅ Job posting parsed successfully')
     } catch (error) {
+      logger.error({ requestId, userId: req.user?.id, error }, '❌ Failed to parse job posting')
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, error: 'Invalid job posting payload', details: error.issues })
       }
@@ -66,7 +90,19 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, uplo
     const job = normalizeJobPayload(jobPayload)
     const jobPrompt = buildJobPrompt(job)
 
+    logger.info({ requestId, userId: req.user?.id, jobTitle: job.title }, '🤖 Calling LLM to generate tailored resume...')
     const result = await generateTailored(jobPrompt, resumeText)
+    const llmMeta = (result as any)._meta || {}
+    logger.info({
+      requestId,
+      userId: req.user?.id,
+      matchScore: result.match_score,
+      provider: llmMeta.provider,
+      model: llmMeta.model,
+      duration: llmMeta.duration,
+      attemptedProviders: llmMeta.attemptedProviders,
+      skippedProviders: llmMeta.skippedProviders
+    }, `✅ LLM response received from ${llmMeta.provider || 'unknown'}`)
 
     // Save resume and tailoring to database
     const user = req.user!
@@ -125,15 +161,25 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, uplo
           month: currentMonth
         }
       })
+
+      logger.info({ requestId, userId: user.id, tailoringId }, '💾 Saved tailoring to database')
     } catch (dbError) {
-      console.warn('Database not available, skipping save:', dbError)
+      logger.warn({ requestId, userId: user.id, error: dbError }, '⚠️ Database not available, skipping save')
       if (isDevelopment) {
-        console.log('✅ Development mode: Returning results without database save')
+        logger.info({ requestId }, '✅ Development mode: Returning results without database save')
       } else {
         // In production, we want to know about database issues
         throw dbError
       }
     }
+
+    logger.info({
+      requestId,
+      userId: user.id,
+      tailoringId,
+      matchScore: result.match_score,
+      jobTitle: job.title
+    }, '✅ Request completed successfully')
 
     res.json({
       success: true,
@@ -148,11 +194,16 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, uplo
       metadata: {
         resume_format: parsedResume.format,
         resume_characters: resumeText.length,
-        job_characters: jobPrompt.length
+        job_characters: jobPrompt.length,
+        llm_provider: llmMeta.provider,
+        llm_model: llmMeta.model,
+        llm_duration_ms: llmMeta.duration,
+        llm_attempted_providers: llmMeta.attemptedProviders,
+        llm_skipped_providers: llmMeta.skippedProviders
       }
     })
   } catch (error) {
-    console.error('❌ Analyze job error:', error)
+    logger.error({ requestId, userId: req.user?.id, error }, '❌ Analyze job error')
 
     const errorMessage = (error as Error).message || 'Unknown error'
 

@@ -43,6 +43,7 @@ export function requirePremium (req: AuthRequest, res: Response, next: NextFunct
 
 export async function checkUsageLimit (req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
+    console.log('⚠️  [USAGE LIMIT] Skipping check - user not authenticated')
     next(); return
   }
 
@@ -50,6 +51,7 @@ export async function checkUsageLimit (req: AuthRequest, res: Response, next: Ne
 
   // Premium users have unlimited usage
   if (user.subscription?.plan === 'premium') {
+    console.log(`✅ [USAGE LIMIT] Premium user ${user.email} - unlimited access`)
     next(); return
   }
 
@@ -67,24 +69,35 @@ export async function checkUsageLimit (req: AuthRequest, res: Response, next: Ne
     })
 
     const monthlyLimit = 5 // Free tier limit
+    const currentUsage = (usage && usage.month === currentMonth) ? usage.tailorings : 0
+
+    console.log(`📊 [USAGE LIMIT] Free tier check for ${user.email}:`)
+    console.log(`   Month: ${currentMonth}`)
+    console.log(`   Usage: ${currentUsage}/${monthlyLimit}`)
+    console.log(`   Remaining: ${monthlyLimit - currentUsage}`)
 
     if (usage && usage.month === currentMonth && usage.tailorings >= monthlyLimit) {
+      console.warn(`🚫 [USAGE LIMIT] Monthly limit exceeded for ${user.email}`)
       return res.status(429).json({
         error: 'Monthly limit reached',
         message: `You've reached your limit of ${monthlyLimit} resume tailorings this month.`,
+        detail: `Usage: ${usage.tailorings}/${monthlyLimit} for ${currentMonth}`,
         upgradeUrl: '/upgrade'
       })
     }
+
+    console.log(`✅ [USAGE LIMIT] Within limits - allowing request`)
   } catch (dbError) {
-    console.warn('Database not available for usage check:', dbError)
+    console.warn('⚠️  [USAGE LIMIT] Database error:', dbError)
 
     // In development, allow unlimited usage if database is down
     if (isDevelopment) {
-      console.log('✅ Development mode: Skipping usage limit check')
+      console.log('✅ [USAGE LIMIT] Development mode: Bypassing check')
       next(); return
     }
 
     // In production, fail securely
+    console.error('❌ [USAGE LIMIT] Production mode: Blocking request due to DB error')
     return res.status(500).json({
       error: 'Service temporarily unavailable',
       message: 'Unable to check usage limits'

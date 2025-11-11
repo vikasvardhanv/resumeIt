@@ -115,6 +115,32 @@ app.use(passport.session())
 // Rate limiting
 app.use(globalRateLimiter)
 
+// Custom request logging middleware (after rate limiting)
+app.use((req, res, next) => {
+  const start = Date.now()
+
+  res.on('finish', () => {
+    const duration = Date.now() - start
+    const rateLimitRemaining = res.getHeader('RateLimit-Remaining')
+    const rateLimitLimit = res.getHeader('RateLimit-Limit')
+
+    logger.info({
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      rateLimit: rateLimitRemaining !== undefined ? {
+        remaining: rateLimitRemaining,
+        limit: rateLimitLimit
+      } : undefined
+    }, `${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`)
+  })
+
+  next()
+})
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({
