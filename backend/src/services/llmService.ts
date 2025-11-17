@@ -8,9 +8,9 @@ const parseEnvInt = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
-const DEFAULT_PROVIDER_CHAIN: ApiProvider[] = ['groq', 'gemini', 'openai', 'together']
+const DEFAULT_PROVIDER_CHAIN: ApiProvider[] = ['gemini', 'openai']
 const GROQ_DAILY_LIMIT = parseEnvInt(process.env.GROQ_DAILY_LIMIT, 14_000)
-const PROVIDER_COOLDOWN_MS = parseEnvInt(process.env.LLM_PROVIDER_COOLDOWN_MS, 15_000)
+const PROVIDER_COOLDOWN_MS = parseEnvInt(process.env.LLM_PROVIDER_COOLDOWN_MS, 5_000)
 
 interface ProviderUsageStats {
   count: number
@@ -899,11 +899,15 @@ function handleProviderError (config: ApiConfig, error: any): never {
   }
 
   if (status === 429) {
+    // Mark provider with cooldown to trigger fallback
     markProviderCooldown(config.provider, PROVIDER_COOLDOWN_MS)
     if (config.provider === 'groq') {
-      return wrap(new Error('⏱️ Groq rate limit exceeded. You have 30 requests per minute. Please wait a moment before trying again.'))
+      return wrap(new Error(`${config.provider} rate limit hit. Falling back to next provider.`))
     }
-    return wrap(new Error('⏱️ Rate limit exceeded. Please wait a moment before trying again.'))
+    if (config.provider === 'gemini') {
+      return wrap(new Error(`${config.provider} rate limit hit. Falling back to OpenAI.`))
+    }
+    return wrap(new Error(`${config.provider} rate limit exceeded. Trying next provider.`))
   }
 
   if (status === 503 || messageLower.includes('loading')) {

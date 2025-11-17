@@ -80,29 +80,31 @@ export const analyzeJobLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: perUserKeyGenerator,
-  skip: (req: Request, res: Response): boolean => {
-    const authReq = req as AuthRequest
-    const remaining = res.getHeader('RateLimit-Remaining')
-    const limit = res.getHeader('RateLimit-Limit')
-    const reset = res.getHeader('RateLimit-Reset')
-    const resetDate = reset ? new Date(Number(reset) * 1000) : null
-
-    logger.info({
-      rateLimitType: 'ANALYZE_JOB',
-      path: req.path,
-      method: req.method,
-      user: authReq.user?.id || 'anonymous',
-      email: authReq.user?.email,
-      remaining,
-      limit,
-      reset,
-      resetDate: resetDate?.toISOString(),
-      resetIn: resetDate ? `${Math.ceil((resetDate.getTime() - Date.now()) / 1000)}s` : null,
-      windowMs: analyzeWindowMs,
-      limitConfig: analyzeLimit
-    }, `📊 [RATE LIMIT] Analyze job check - ${remaining}/${limit} remaining`)
-
-    return false // false = don't skip, apply rate limiting
-  },
   handler: build429Handler('Resume tailoring request limit reached for your account. Please wait a few minutes or upgrade your plan.', 'ANALYZE_JOB')
 })
+
+// Add a separate middleware for logging after rate limiter sets headers
+export const logAnalyzeJobRateLimit = (req: Request, res: Response, next: NextFunction): void => {
+  const authReq = req as AuthRequest
+  const remaining = res.getHeader('RateLimit-Remaining')
+  const limit = res.getHeader('RateLimit-Limit')
+  const reset = res.getHeader('RateLimit-Reset')
+  const resetDate = reset ? new Date(Number(reset) * 1000) : null
+
+  logger.info({
+    rateLimitType: 'ANALYZE_JOB',
+    path: req.path,
+    method: req.method,
+    user: authReq.user?.id || 'anonymous',
+    email: authReq.user?.email,
+    remaining,
+    limit,
+    reset,
+    resetDate: resetDate?.toISOString(),
+    resetIn: resetDate ? `${Math.ceil((resetDate.getTime() - Date.now()) / 1000)}s` : null,
+    windowMs: analyzeWindowMs,
+    limitConfig: analyzeLimit
+  }, `📊 [RATE LIMIT] Analyze job check - ${remaining || 'N/A'}/${limit || analyzeLimit} remaining`)
+
+  next()
+}

@@ -201,10 +201,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function checkBackendHealth(manual: boolean) {
   const hc = getHealthChip();
   if (!hc) return;
-  updateHealthChip('checking', manual ? 'Re-checking…' : 'Checking backend…');
+  updateHealthChip('checking', manual ? 'Re-checking…' : 'Checking…');
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 2000);
 
   try {
     const response = await fetch(getApiUrl('/health'), {
@@ -223,7 +223,7 @@ async function checkBackendHealth(manual: boolean) {
   } catch (error) {
     console.warn('Health check failed:', error);
     const aborted = error instanceof DOMException && error.name === 'AbortError';
-    updateHealthChip(aborted ? 'warn' : 'error', aborted ? 'Slow response' : 'Offline');
+    updateHealthChip(aborted ? 'warn' : 'error', aborted ? 'Connection timeout' : 'Offline');
   } finally {
     if (healthTimer) {
       window.clearTimeout(healthTimer);

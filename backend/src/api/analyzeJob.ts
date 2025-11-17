@@ -5,7 +5,7 @@ import crypto from 'crypto'
 import { generateTailored } from '../services/llmService.js'
 import { parseResume } from '../services/resumeParser.js'
 import { requireAuth, checkUsageLimit } from '../middleware/authMiddleware.js'
-import { analyzeJobLimiter } from '../middleware/rateLimit.js'
+import { analyzeJobLimiter, logAnalyzeJobRateLimit } from '../middleware/rateLimit.js'
 import { type AuthRequest } from '../types/auth'
 import { prisma } from '../config/prisma.js'
 import { logger } from '../utils/logger.js'
@@ -41,7 +41,7 @@ interface NormalizedJob {
   hash: string
 }
 
-analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, checkUsageLimit, upload.single('resume'), async (req: AuthRequest, res: Response) => {
+analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimit, checkUsageLimit, upload.single('resume'), async (req: AuthRequest, res: Response) => {
   const requestId = crypto.randomBytes(8).toString('hex')
 
   logger.info({

@@ -1,9 +1,10 @@
 # ResumeIt
 
-AI-powered Chrome extension that automatically tailors your résumé to match job postings. Built with TypeScript, Express, Prisma, and React.
+AI-powered Chrome extension that automatically tailors your résumé to match job postings. Built with TypeScript, Express, Prisma, and modern AI providers.
 
-**🌐 Landing Page:** [https://resumeit-landing.onrender.com](https://resumeit-landing.onrender.com) (or your custom domain)  
-**🚀 Deploy to Render:** See [RENDER_DEPLOYMENT.md](./RENDER_DEPLOYMENT.md) for complete deployment instructions.
+**🚀 Production Ready:** All dependencies updated, no deprecation warnings  
+**📚 Complete Guide:** See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for deployment  
+**🌐 Landing Page:** [LANDING_PAGE_SETUP.md](./LANDING_PAGE_SETUP.md)
 
 ---
 
@@ -13,7 +14,7 @@ AI-powered Chrome extension that automatically tailors your résumé to match jo
 - 🔐 **Google OAuth Authentication** - Secure login with Google accounts
 - 📊 **Usage Tracking** - Monitor API usage and enforce rate limits
 - 💳 **Premium Tiers** - Stripe integration for paid subscriptions (optional)
-- 🔄 **Multi-Provider LLM** - Adaptive routing across Groq, Gemini, Together, and OpenAI
+- 🔄 **Smart LLM Routing** - Gemini (free) → OpenAI (paid) fallback
 - 🌐 **Chrome Extension** - Seamless browser integration
 - 📝 **Login Auditing** - Track authentication events for security
 
@@ -23,14 +24,11 @@ AI-powered Chrome extension that automatically tailors your résumé to match jo
 
 ### Prerequisites
 
-- Node.js 20.x and npm 10+
-- PostgreSQL 14+ (or Docker)
+- Node.js 18+ and npm 10+
+- PostgreSQL 14+ (or Railway/Render managed)
 - Chrome browser
-- Groq API key (free tier available)
-- Google Gemini API key
-- Together AI API key (optional fallback)
-- OpenAI API key (optional critical fallback)
-- (Optional) [Google Gemini API key](https://ai.google.dev/gemini-api/docs/api-key)
+- [Google Gemini API key](https://aistudio.google.com/app/apikey) (FREE tier)
+- [OpenAI API key](https://platform.openai.com/api-keys) (fallback)
 - [Google OAuth credentials](https://console.cloud.google.com)
 
 ### Local Development
@@ -41,7 +39,7 @@ AI-powered Chrome extension that automatically tailors your résumé to match jo
    cd resumeIt/backend
    npm install
    cp .env.example .env
-   # Edit .env with your credentials
+   # Edit .env with your API keys
    ```
 
 2. **Generate secrets**

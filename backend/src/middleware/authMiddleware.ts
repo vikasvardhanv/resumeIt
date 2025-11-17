@@ -68,7 +68,7 @@ export async function checkUsageLimit (req: AuthRequest, res: Response, next: Ne
       }
     })
 
-    const monthlyLimit = 5 // Free tier limit
+    const monthlyLimit = parseInt(process.env.FREE_TIER_MONTHLY_LIMIT || '100') // Free tier limit (100 for testing)
     const currentUsage = (usage && usage.month === currentMonth) ? usage.tailorings : 0
 
     console.log(`📊 [USAGE LIMIT] Free tier check for ${user.email}:`)
