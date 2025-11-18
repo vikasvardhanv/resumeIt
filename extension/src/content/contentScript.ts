@@ -755,13 +755,26 @@ function extractJobIntelligently(): JobData | null {
   // Step 6: Extract requirements from description
   const requirements = extractRequirements(finalDescription);
   
-  // Step 7: Build job data with hybrid results
+  // Step 7: Extract company with multiple fallbacks
+  let companyName = finalCompany?.trim();
+
+  // Try extracting from page meta if not found yet
+  if (!companyName || companyName.length < 2) {
+    companyName = extractCompanyFromPageMeta() || '';
+  }
+
+  // Try extracting from domain as last resort
+  if (!companyName || companyName.length < 2) {
+    companyName = extractCompanyFromDomain();
+  }
+
+  // Build job data with hybrid results
   const jobData: JobData = {
     title: finalTitle!.trim(),
-    company: finalCompany?.trim() || extractCompanyFromDomain(),
+    company: companyName,
     description: finalDescription!.trim(),
     requirements,
-    hash: generateSimpleHash(finalTitle! + (finalCompany || '')),
+    hash: generateSimpleHash(finalTitle! + (companyName || '')),
     source: window.location.hostname,
     pageUrl: window.location.href,
     location: patternResult?.location || extractLocation()
@@ -783,19 +796,319 @@ function extractJobIntelligently(): JobData | null {
 
 function extractCompanyFromDomain(): string {
   const hostname = window.location.hostname;
+
+  // Special handling for known job boards - try to extract from page content first
+  const jobBoards = ['indeed', 'linkedin', 'glassdoor', 'monster', 'dice', 'ziprecruiter', 'careerbuilder'];
+  const isJobBoard = jobBoards.some(board => hostname.includes(board));
+
+  if (isJobBoard) {
+    // Try to find company name in visible text as last resort
+    const bodyText = document.body.innerText;
+
+    // Look for "Company Name" pattern near common labels
+    const companyPatterns = [
+      /Company:\s*([A-Z][a-zA-Z0-9\s&.,'-]{2,60}?)(?:\n|$|\.)/,
+      /Employer:\s*([A-Z][a-zA-Z0-9\s&.,'-]{2,60}?)(?:\n|$|\.)/,
+      /Organization:\s*([A-Z][a-zA-Z0-9\s&.,'-]{2,60}?)(?:\n|$|\.)/,
+      /Hiring Company:\s*([A-Z][a-zA-Z0-9\s&.,'-]{2,60}?)(?:\n|$|\.)/
+    ];
+
+    for (const pattern of companyPatterns) {
+      const match = bodyText.match(pattern);
+      if (match && match[1]) {
+        const company = match[1].trim();
+        if (company.length > 2 && company.length < 80) {
+          console.log('✅ Company from body text pattern:', company);
+          return company;
+        }
+      }
+    }
+
+    // Look for company in the first prominent links
+    const prominentLinks = document.querySelectorAll('a[class*="company" i], a[class*="employer" i]');
+    for (const link of Array.from(prominentLinks)) {
+      const text = link.textContent?.trim();
+      if (text && text.length > 2 && text.length < 80 &&
+          !text.toLowerCase().match(/follow|view|more|see all|profile|jobs|careers/)) {
+        console.log('✅ Company from prominent link:', text);
+        return text;
+      }
+    }
+  }
+
+  // For direct employer sites, extract from domain
   const parts = hostname.split('.');
-  
+
   // Remove common prefixes
-  const cleanParts = parts.filter(p => 
-    !['www', 'jobs', 'careers', 'apply', 'recruiting'].includes(p.toLowerCase())
+  const cleanParts = parts.filter(p =>
+    !['www', 'jobs', 'careers', 'apply', 'recruiting', 'talent', 'work', 'hr'].includes(p.toLowerCase())
   );
-  
+
   if (cleanParts.length > 0) {
-    // Capitalize first letter
-    return cleanParts[0].charAt(0).toUpperCase() + cleanParts[0].slice(1);
+    const domainName = cleanParts[0];
+
+    // Handle special cases and known companies
+    const specialCases: Record<string, string> = {
+      'google': 'Google',
+      'microsoft': 'Microsoft',
+      'amazon': 'Amazon',
+      'meta': 'Meta',
+      'apple': 'Apple',
+      'netflix': 'Netflix',
+      'tesla': 'Tesla',
+      'uber': 'Uber',
+      'lyft': 'Lyft',
+      'airbnb': 'Airbnb',
+      'salesforce': 'Salesforce',
+      'oracle': 'Oracle',
+      'ibm': 'IBM',
+      'adobe': 'Adobe',
+      'intel': 'Intel',
+      'nvidia': 'NVIDIA',
+      'amd': 'AMD',
+      'cisco': 'Cisco',
+      'vmware': 'VMware',
+      'paypal': 'PayPal',
+      'stripe': 'Stripe',
+      'shopify': 'Shopify',
+      'spotify': 'Spotify',
+      'zoom': 'Zoom',
+      'slack': 'Slack',
+      'dropbox': 'Dropbox',
+      'atlassian': 'Atlassian',
+      'twilio': 'Twilio',
+      'okta': 'Okta',
+      'databricks': 'Databricks',
+      'snowflake': 'Snowflake'
+    };
+
+    const normalized = domainName.toLowerCase();
+    if (specialCases[normalized]) {
+      return specialCases[normalized];
+    }
+
+    // Capitalize first letter and handle camelCase
+    const formatted = domainName
+      .replace(/([A-Z])/g, ' $1')
+      .split(/[\s-_]/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+      .trim();
+
+    // If we have a reasonable domain name, use it instead of "Company Name Not Found"
+    if (formatted.length > 2 && !jobBoards.some(board => formatted.toLowerCase().includes(board))) {
+      return formatted;
+    }
+  }
+
+  return 'Company Name Not Found';
+}
+
+function extractCompanyFromPageMeta(): string | null {
+  console.log('🔍 Starting universal company extraction...');
+  
+  // ========================================
+  // LAYER 1: Schema.org Structured Data (Most Reliable)
+  // ========================================
+  try {
+    const schemaScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of Array.from(schemaScripts)) {
+      try {
+        const data = JSON.parse(script.textContent || '');
+        
+        // Handle single JobPosting
+        if (data['@type'] === 'JobPosting' && data.hiringOrganization) {
+          const org = data.hiringOrganization;
+          if (typeof org === 'object' && org.name) {
+            console.log('✅ Company from Schema.org:', org.name);
+            return org.name;
+          } else if (typeof org === 'string') {
+            console.log('✅ Company from Schema.org:', org);
+            return org;
+          }
+        }
+        
+        // Handle array of schemas
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (item['@type'] === 'JobPosting' && item.hiringOrganization) {
+              const org = item.hiringOrganization;
+              if (typeof org === 'object' && org.name) {
+                console.log('✅ Company from Schema.org array:', org.name);
+                return org.name;
+              } else if (typeof org === 'string') {
+                console.log('✅ Company from Schema.org array:', org);
+                return org;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Skip invalid JSON
+      }
+    }
+  } catch (e) {
+    console.warn('Error extracting company from schema:', e);
   }
   
-  return 'Company';
+  // ========================================
+  // LAYER 2: LinkedIn-Specific Extraction
+  // ========================================
+  if (window.location.hostname.includes('linkedin.com')) {
+    console.log('🔗 Detected LinkedIn - using specialized extraction...');
+    
+    // Try URL parsing (e.g., /jobs/view/title-at-company-name-123)
+    const urlMatch = window.location.pathname.match(/\/jobs\/view\/[^/]*-at-([^-]+(?:-[^-]+)*)-\d+/);
+    if (urlMatch) {
+      const companySlug = urlMatch[1];
+      const companyName = companySlug
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      console.log('✅ Company from LinkedIn URL:', companyName);
+      return companyName;
+    }
+    
+    // Try multiple LinkedIn-specific selectors
+    const linkedInSelectors = [
+      '.job-details-jobs-unified-top-card__company-name a',
+      '.jobs-unified-top-card__company-name a',
+      '.jobs-unified-top-card__subtitle-primary-grouping a',
+      '[data-tracking-control-name="public_jobs_topcard-org-name"]',
+      '.topcard__org-name-link',
+      '.job-details-jobs-unified-top-card__primary-description a',
+      'a[href*="/company/"]'
+    ];
+    
+    for (const selector of linkedInSelectors) {
+      const element = document.querySelector(selector);
+      const text = element?.textContent?.trim();
+      if (text && text.length > 2 && text.length < 100) {
+        console.log('✅ Company from LinkedIn selector:', text);
+        return text;
+      }
+    }
+  }
+  
+  // ========================================
+  // LAYER 3: Open Graph & Meta Tags
+  // ========================================
+  const ogSiteName = document.querySelector('meta[property="og:site_name"]')?.getAttribute('content');
+  if (ogSiteName && ogSiteName.length > 2 && ogSiteName.length < 100) {
+    const genericNames = ['indeed', 'linkedin', 'glassdoor', 'monster', 'dice', 'jobs', 'careers', 'job board', 'recruitment'];
+    if (!genericNames.some(name => ogSiteName.toLowerCase().includes(name))) {
+      console.log('✅ Company from OG site_name:', ogSiteName);
+      return ogSiteName;
+    }
+  }
+  
+  // Try og:title for company name
+  const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+  const ogTitleMatch = ogTitle.match(/(?:at|@)\s+([A-Z][a-zA-Z0-9\s&.,'-]+?)(?:\s*[-|•:]|\s+job|\s+career|\s+hiring|$)/i);
+  if (ogTitleMatch && ogTitleMatch[1].length > 2 && ogTitleMatch[1].length < 80) {
+    console.log('✅ Company from OG title:', ogTitleMatch[1].trim());
+    return ogTitleMatch[1].trim();
+  }
+  
+  // ========================================
+  // LAYER 4: Breadcrumb Navigation
+  // ========================================
+  const breadcrumbs = document.querySelectorAll('[itemtype*="BreadcrumbList"] [itemprop="name"], nav[aria-label*="breadcrumb" i] a, .breadcrumb a, [class*="breadcrumb" i] a');
+  if (breadcrumbs.length > 0) {
+    // Usually company is 2nd or 3rd breadcrumb
+    for (let i = 1; i < Math.min(breadcrumbs.length, 4); i++) {
+      const text = breadcrumbs[i].textContent?.trim();
+      if (text && text.length > 2 && text.length < 80 && 
+          !text.toLowerCase().match(/home|jobs|careers|search|results/)) {
+        console.log('✅ Company from breadcrumb:', text);
+        return text;
+      }
+    }
+  }
+  
+  // ========================================
+  // LAYER 5: Page Title Analysis (Multiple Patterns)
+  // ========================================
+  const title = document.title;
+  const titlePatterns = [
+    /(?:at|@)\s+([A-Z][a-zA-Z0-9\s&.,'-]+?)(?:\s*[-|•:]|\s+job|\s+career|\s+hiring|$)/i,
+    /^([A-Z][a-zA-Z0-9\s&.,'-]+?)\s*[-|•:]/,  // Company at start
+    /-\s*([A-Z][a-zA-Z0-9\s&.,'-]+?)\s*$/,    // Company at end
+    /\|\s*([A-Z][a-zA-Z0-9\s&.,'-]+?)\s*$/    // Company after pipe
+  ];
+  
+  for (const pattern of titlePatterns) {
+    const match = title.match(pattern);
+    if (match && match[1].length > 2 && match[1].length < 80) {
+      const company = match[1].trim();
+      // Filter out generic terms
+      if (!company.toLowerCase().match(/jobs|careers|indeed|linkedin|glassdoor|monster|apply|hiring/)) {
+        console.log('✅ Company from page title:', company);
+        return company;
+      }
+    }
+  }
+  
+  // ========================================
+  // LAYER 6: Meta Description Analysis
+  // ========================================
+  const metaDesc = document.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+  const descPatterns = [
+    /(?:at|@|with|join)\s+([A-Z][a-zA-Z0-9\s&.,'-]+?)(?:\s*[-|•.]|\s+is\s+|\s+in\s+|\s+for\s+|$)/i,
+    /([A-Z][a-zA-Z0-9\s&.,'-]+?)\s+(?:is hiring|seeks|looking for)/i
+  ];
+  
+  for (const pattern of descPatterns) {
+    const match = metaDesc.match(pattern);
+    if (match && match[1].length > 2 && match[1].length < 80) {
+      const company = match[1].trim();
+      if (!company.toLowerCase().match(/jobs|careers|job board|indeed|linkedin|glassdoor/)) {
+        console.log('✅ Company from meta description:', company);
+        return company;
+      }
+    }
+  }
+  
+  // ========================================
+  // LAYER 7: Dynamic Heading Analysis (H1, H2)
+  // ========================================
+  const headings = document.querySelectorAll('h1, h2');
+  for (const heading of Array.from(headings)) {
+    const text = heading.textContent?.trim() || '';
+    // Look for "About Company" or "Company Name" patterns
+    if (text.match(/^about\s+([A-Z][a-zA-Z0-9\s&.,'-]+)$/i)) {
+      const company = text.replace(/^about\s+/i, '').trim();
+      if (company.length > 2 && company.length < 80) {
+        console.log('✅ Company from heading:', company);
+        return company;
+      }
+    }
+    
+    // Look for headings with company indicators near job title
+    if (text.match(/(?:working at|join|career at)\s+([A-Z][a-zA-Z0-9\s&.,'-]+)/i)) {
+      const match = text.match(/(?:working at|join|career at)\s+([A-Z][a-zA-Z0-9\s&.,'-]+)/i);
+      if (match && match[1].length > 2 && match[1].length < 80) {
+        console.log('✅ Company from heading context:', match[1].trim());
+        return match[1].trim();
+      }
+    }
+  }
+  
+  // ========================================
+  // LAYER 8: Link Analysis (Company Profile Links)
+  // ========================================
+  const companyLinks = document.querySelectorAll('a[href*="/company/"], a[href*="/employer/"], a[href*="/organization/"]');
+  for (const link of Array.from(companyLinks)) {
+    const text = link.textContent?.trim();
+    if (text && text.length > 2 && text.length < 80 && 
+        !text.toLowerCase().match(/follow|view|more|see all|profile/)) {
+      console.log('✅ Company from profile link:', text);
+      return text;
+    }
+  }
+  
+  console.log('❌ No company found through any extraction layer');
+  return null;
 }
 
 function extractLocation(): string | undefined {
@@ -898,9 +1211,9 @@ if (isLikelyJobPage()) {
 }
 
 // Listen for extraction requests
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   console.log('📨 Received message:', request.type);
-  
+
   if (request.type === MessageType.GetJob) {
     try {
       const job = extractJobIntelligently();

@@ -80,3 +80,4 @@ landing/
 # Experimental/unused code
 extension/src/utils/
 DEPLOYMENT_GUIDE.md
+LOGGING_GUIDE.md

@@ -162,11 +162,13 @@ body {
 
 /* Resume status messages */
 .resume-status {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
   font-size: 12px;
   border: 1px solid transparent;
+  font-weight: 500;
+  text-align: left;
 }
 .resume-status.success {
   background: #ECFDF5;
@@ -377,6 +379,14 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.upload-card-compact {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
 .upload-dropzone {
   position: relative;
   padding: 16px 12px;
@@ -390,6 +400,18 @@ body {
   background: var(--bg-gray);
 }
 
+.upload-dropzone-compact {
+  position: relative;
+  padding: 12px 14px;
+  padding-right: 44px;
+  transition: background 0.2s;
+  border-radius: 8px;
+}
+
+.upload-dropzone-compact:hover {
+  background: var(--bg-gray);
+}
+
 .upload-icon {
   width: 32px;
   height: 32px;
@@ -398,41 +420,47 @@ body {
   color: var(--primary);
 }
 
-.upload-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 10px;
-}
-
-.upload-btn-simple {
-  padding: 8px 20px;
+.upload-icon-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: var(--primary);
-  color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
   transition: all 0.2s ease;
-  font-family: inherit;
-  margin-bottom: 8px;
+  color: white;
 }
 
-.upload-btn-simple:hover {
+.upload-icon-btn:hover {
   background: var(--primary-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(91, 99, 245, 0.3);
+  transform: translateY(-50%) scale(1.05);
 }
 
-.upload-btn-simple:active {
-  transform: translateY(0);
+.upload-icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .upload-hint {
   font-size: 11px;
   color: var(--text-light);
   margin: 0;
+}
+
+.upload-hint-compact {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+  text-align: left;
 }
 
 .clear-resume-btn {
@@ -489,6 +517,15 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.job-card-compact {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+
 .job-card-detected {
   background: #F0FDF4;
   border-color: #86EFAC;
@@ -517,6 +554,42 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+.job-hint-compact {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  padding-right: 24px;
+  line-height: 1.4;
+}
+
+.refresh-icon-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.refresh-icon-btn:hover {
+  background: var(--bg-gray);
+  color: var(--primary);
+}
+
+.refresh-icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .job-info {
@@ -600,8 +673,7 @@ body {
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 10px;
-  max-height: 250px;
-  overflow-y: auto;
+  /* Removed max-height and overflow to prevent nested scrolling */
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;

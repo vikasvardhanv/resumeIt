@@ -472,6 +472,8 @@ export async function generateTailored (jobDescription: string, resumeText: stri
   console.log('🚀 [LLM] STARTING TAILORING REQUEST')
   console.log(`📋 Provider Chain: ${providers.join(' → ')}`)
   console.log(`📊 Input sizes: Job=${jobDescription.length} chars, Resume=${resumeText.length} chars`)
+  console.log(`\n📄 Job Preview (first 200 chars):\n   ${jobDescription.substring(0, 200).replace(/\n/g, '\n   ')}...`)
+  console.log(`\n📝 Resume Preview (first 200 chars):\n   ${resumeText.substring(0, 200).replace(/\n/g, '\n   ')}...`)
   console.log('================================================================================\n')
 
   let lastError: Error | null = null
@@ -515,19 +517,23 @@ export async function generateTailored (jobDescription: string, resumeText: stri
       console.log(`   Model: ${config.model}`)
       console.log(`   Duration: ${duration}ms`)
       console.log(`   Match Score: ${result.match_score}%`)
+      console.log(`   Resume Bullets Generated: ${result.tailored?.experience_bullets?.length || 0}`)
+      console.log(`   Key Skills: ${result.tailored?.key_skills?.length || 0}`)
+      console.log(`   Suggested Keywords: ${result.tailored?.suggested_keywords?.length || 0}`)
+      console.log(`   Projects: ${result.projects?.length || 0}`)
       console.log(`   Attempted: [${attemptedProviders.join(', ')}]`)
       if (skippedProviders.length > 0) {
         console.log(`   Skipped: [${skippedProviders.join(', ')}]`)
       }
-
-      // Attach metadata for frontend display
-      (result as any)._meta = {
-        provider,
-        model: config.model,
-        duration,
-        attemptedProviders,
-        skippedProviders
+      
+      if (result.tailored?.experience_bullets) {
+        console.log('\n   📝 Generated Resume Bullets:')
+        result.tailored.experience_bullets.forEach((bullet: string, index: number) => {
+          const preview = bullet.length > 100 ? bullet.substring(0, 100) + '...' : bullet
+          console.log(`      ${index + 1}. ${preview}`)
+        })
       }
+      console.log('==================================================================================\n')
 
       return result
     } catch (error: any) {
