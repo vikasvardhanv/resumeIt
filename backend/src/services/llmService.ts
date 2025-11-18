@@ -346,9 +346,9 @@ export const TailorResponseSchema = z.object({
   }),
   resume: z.object({
     sections: z.array(z.object({
-      heading: z.string(),
-      bullets: z.array(z.string()).optional(),
-      body: z.string().optional()
+      heading: z.string().default(''),
+      bullets: z.array(z.string()).optional().nullable(),
+      body: z.string().optional().nullable()
     })),
     full_text: z.string()
   }),
@@ -470,16 +470,13 @@ Return this exact JSON structure:
       }
     ]
   },
+
+  // OPTIONAL: Leave resume section empty (not used by frontend)
   "resume": {
-    "sections": [
-      {
-        "heading": "Section Name",
-        "bullets": ["bullet 1", "bullet 2"],
-        "body": "Section content"
-      }
-    ],
-    "full_text": "Complete resume text"
+    "sections": [],
+    "full_text": ""
   },
+
   "match_score": 75,
   "application_strategy": {
     "cover_letter_points": ["Point 1", "Point 2"],

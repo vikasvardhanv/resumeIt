@@ -81,3 +81,4 @@ landing/
 extension/src/utils/
 DEPLOYMENT_GUIDE.md
 LOGGING_GUIDE.md
+SCHEMA_VALIDATION_FIX.md
