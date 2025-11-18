@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { z } from 'zod'
 import axios from 'axios'
 import Bytez from 'bytez.js'
+import { logger } from '../utils/logger'
 
 const parseEnvInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt((value ?? '').split(/[\s#]/)[0] ?? '', 10)
@@ -377,7 +378,7 @@ export const TailorResponseSchema = z.object({
 export type TailorResponse = z.infer<typeof TailorResponseSchema>
 
 // Enhanced prompt for comprehensive resume tailoring
-const ENHANCED_PROMPT = `You are an expert ATS-optimized resume consultant. Analyze the job and resume, then respond with ONLY a valid JSON object. Do not include any explanatory text before or after the JSON.
+const ENHANCED_PROMPT = `You are an elite, senior-level ATS resume strategist and resume-writing expert. Your job is to analyze the job description and user resume, then produce a PERFECT, fully dynamic, hyper-realistic set of resume outputs.
 
 JOB DESCRIPTION:
 {{job_description}}
@@ -385,23 +386,65 @@ JOB DESCRIPTION:
 CURRENT RESUME:
 {{user_resume}}
 
-CRITICAL: Your response must be ONLY valid JSON, starting with { and ending with }. No additional text.
+Your response must be ONLY a valid JSON object.  
+Do NOT add any text before or after the JSON.  
+The JSON must start with { and end with }.
 
-For "experience_bullets", provide 5-8 polished, ready-to-use resume bullet points that:
-- Start with strong action verbs (Led, Developed, Implemented, Achieved, etc.)
-- Include specific metrics and quantified results where possible
-- Are directly relevant to the job description requirements
-- Follow the STAR method (Situation, Task, Action, Result)
-- Can be copied directly into the resume without editing
-- Are tailored to match the job's key requirements and keywords
+CRITICAL REQUIREMENTS FOR REALISM + DYNAMIC CONTENT
+
+You must produce content that:
+- Sounds like REAL projects done by REAL engineers in REAL companies (no templates, no clichés)
+- Avoids generic "improved performance" claims—always explain HOW and with WHAT tools
+- Uses **concrete technical details** pulled from the job description and the user's resume
+- Includes **reasonable, believable, real-world metrics** such as:
+  - "handled 12K+ daily transactions"
+  - "reduced query time by 3–4 seconds"
+  - "cut manual review cycles by ~2 hours per week"
+  - "supported a team of 6 engineers"
+- Describes **actual problems and solutions**, not vague accomplishments
+- NEVER fabricates technologies the candidate never mentioned, unless the job explicitly requires them and they're logically reasonable
+- Never uses percentages at all
+- All experience bullets MUST be specific, contextual, and sound human—not robotic or manufactured
+- EVERYTHING must be dynamically generated based on the job + resume (no boilerplate or hardcoded phrasing)
+
+EXPERIENCE BULLETS REQUIREMENTS:
+- Generate MINIMUM 10-12 ready-to-use resume bullets (can generate more if resume has rich content)
+- Each bullet must start with a strong action verb
+- Each bullet must be ATS-optimized with keywords from the job description
+- Each bullet must include quantifiable metrics or concrete impact
+- Bullets must be tailored to the specific job requirements
+- Mix technical and soft skills based on job requirements
+
+MATCH SCORE CALCULATION:
+Calculate the match_score (0-100) based on:
+- Keyword overlap between resume and job description (40% weight)
+- Skills match (30% weight)
+- Experience level alignment (20% weight)
+- Education/certification requirements (10% weight)
+Be honest and realistic - don't inflate scores. A 60-75% match is good, 75-85% is excellent, 85%+ is exceptional.
+
+JSON OUTPUT STRUCTURE (MUST FOLLOW EXACTLY)
 
 Return this exact JSON structure:
 {
   "tailored": {
     "professional_summary": "ATS-optimized 2-3 sentence summary highlighting relevant experience",
-    "key_skills": ["skill1", "skill2", "skill3", "skill4", "skill5"],
-    "experience_bullets": ["Ready-to-use bullet 1 with metrics", "Ready-to-use bullet 2 with impact", "Ready-to-use bullet 3 with achievement", "Ready-to-use bullet 4 with results", "Ready-to-use bullet 5 with quantified value"],
-    "suggested_keywords": ["keyword1", "keyword2", "keyword3"],
+    "key_skills": ["skill1", "skill2", "skill3", "skill4", "skill5", "skill6", "skill7", "skill8"],
+    "experience_bullets": [
+      "Developed and maintained production-grade system handling 15K+ daily requests with 99.9% uptime",
+      "Architected scalable microservices reducing query response time from 8s to 800ms",
+      "Led cross-functional team of 5 engineers implementing CI/CD pipeline reducing deployment time by 4 hours",
+      "Built automated testing framework covering 85% of codebase and catching 95% of bugs pre-production",
+      "Optimized database queries reducing server costs by $3K/month while improving performance",
+      "Collaborated with product team to design and ship 12 features used by 50K+ active users",
+      "Implemented monitoring and alerting system reducing incident response time from 2 hours to 15 minutes",
+      "Mentored 3 junior developers improving code review turnaround by 50% and code quality",
+      "Migrated legacy monolith to containerized architecture supporting 10x traffic growth",
+      "Designed RESTful APIs consumed by 8 internal services and 3 external partners",
+      "Conducted technical interviews and built onboarding process reducing ramp-up time by 3 weeks",
+      "Established engineering best practices and documentation reducing support tickets by 60%"
+    ],
+    "suggested_keywords": ["keyword1", "keyword2", "keyword3", "keyword4"],
     "dynamic_resume_points": [
       {
         "category": "Technical Achievements",
@@ -452,9 +495,21 @@ Return this exact JSON structure:
     }
   ],
   "competitive_analysis": {
-    "strengths": ["Strength 1", "Strength 2"],
-    "gaps": ["Gap 1", "Gap 2"],
-    "improvement_areas": ["Area 1", "Area 2"]
+    "strengths": [
+      "Strong technical background in [specific technology from job description]",
+      "Proven track record of [specific achievement type required by job]",
+      "Experience with [specific tool/methodology mentioned in job posting]"
+    ],
+    "gaps": [
+      "Job requires [specific skill], which is not prominently featured in resume",
+      "Limited evidence of [specific experience type] mentioned in job requirements",
+      "Could highlight more experience with [specific technology/domain]"
+    ],
+    "improvement_areas": [
+      "Add specific examples demonstrating [missing skill/experience]",
+      "Quantify achievements related to [job requirement]",
+      "Emphasize experience with [technology/methodology] if available in work history"
+    ]
   }
 }
 
@@ -468,13 +523,12 @@ export async function generateTailored (jobDescription: string, resumeText: stri
     throw new Error('No AI providers configured. Please set PRIMARY_LLM_PROVIDER / FALLBACK_* or LLM_PROVIDER_CHAIN.')
   }
 
-  console.log('\n================================================================================')
-  console.log('🚀 [LLM] STARTING TAILORING REQUEST')
-  console.log(`📋 Provider Chain: ${providers.join(' → ')}`)
-  console.log(`📊 Input sizes: Job=${jobDescription.length} chars, Resume=${resumeText.length} chars`)
-  console.log(`\n📄 Job Preview (first 200 chars):\n   ${jobDescription.substring(0, 200).replace(/\n/g, '\n   ')}...`)
-  console.log(`\n📝 Resume Preview (first 200 chars):\n   ${resumeText.substring(0, 200).replace(/\n/g, '\n   ')}...`)
-  console.log('================================================================================\n')
+  logger.info({
+    msg: '🚀 [LLM] Starting tailoring request',
+    providerChain: providers.join(' → '),
+    jobDescriptionLength: jobDescription.length,
+    resumeLength: resumeText.length
+  })
 
   let lastError: Error | null = null
   const attemptedProviders: string[] = []
@@ -484,25 +538,35 @@ export async function generateTailored (jobDescription: string, resumeText: stri
     const provider = providers[i]
     const config = getApiConfig(provider)
 
-    console.log(`\n🔄 [LLM] Attempt ${i + 1}/${providers.length}: ${provider}`)
-    console.log(`   Model: ${config.model}`)
-    console.log(`   Endpoint: ${config.baseURL}`)
+    logger.info({
+      msg: `🔄 [LLM] Attempting provider ${i + 1}/${providers.length}`,
+      provider,
+      model: config.model,
+      endpoint: config.baseURL
+    })
 
     if (!isProviderConfigured(provider)) {
       const keyName = getProviderKeyEnvVar(provider)
-      console.warn(`   ⚠️  SKIPPED: Missing ${keyName}`)
+      logger.warn({
+        msg: `⚠️  Skipping provider - missing API key`,
+        provider,
+        keyName
+      })
       skippedProviders.push(`${provider} (missing key)`)
       continue
     }
 
     const skipReason = getSkipReason(provider)
     if (skipReason) {
-      console.warn(`   ⚠️  SKIPPED: ${skipReason}`)
+      logger.warn({
+        msg: `⚠️  Skipping provider`,
+        provider,
+        reason: skipReason
+      })
       skippedProviders.push(`${provider} (${skipReason})`)
       continue
     }
 
-    console.log(`   ✅ API key found, attempting request...`)
     attemptedProviders.push(provider)
 
     try {
@@ -512,69 +576,70 @@ export async function generateTailored (jobDescription: string, resumeText: stri
 
       recordProviderSuccess(provider)
 
-      console.log('\n==================================================================================')
-      console.log(`✅ [LLM] SUCCESS with ${provider}`)
-      console.log(`   Model: ${config.model}`)
-      console.log(`   Duration: ${duration}ms`)
-      console.log(`   Match Score: ${result.match_score}%`)
-      console.log(`   Resume Bullets Generated: ${result.tailored?.experience_bullets?.length || 0}`)
-      console.log(`   Key Skills: ${result.tailored?.key_skills?.length || 0}`)
-      console.log(`   Suggested Keywords: ${result.tailored?.suggested_keywords?.length || 0}`)
-      console.log(`   Projects: ${result.projects?.length || 0}`)
-      console.log(`   Attempted: [${attemptedProviders.join(', ')}]`)
-      if (skippedProviders.length > 0) {
-        console.log(`   Skipped: [${skippedProviders.join(', ')}]`)
-      }
-      
-      if (result.tailored?.experience_bullets) {
-        console.log('\n   📝 Generated Resume Bullets:')
-        result.tailored.experience_bullets.forEach((bullet: string, index: number) => {
-          const preview = bullet.length > 100 ? bullet.substring(0, 100) + '...' : bullet
-          console.log(`      ${index + 1}. ${preview}`)
-        })
-      }
-      console.log('==================================================================================\n')
+      logger.info({
+        msg: '✅ [LLM] Request successful',
+        provider,
+        model: config.model,
+        duration,
+        matchScore: result.match_score,
+        bulletsGenerated: result.tailored?.experience_bullets?.length || 0,
+        keySkills: result.tailored?.key_skills?.length || 0,
+        suggestedKeywords: result.tailored?.suggested_keywords?.length || 0,
+        projects: result.projects?.length || 0,
+        attemptedProviders,
+        skippedProviders: skippedProviders.length > 0 ? skippedProviders : undefined
+      })
 
       return result
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error))
-      const duration = Date.now() - Date.now()
 
-      console.error(`   ❌ FAILED: ${lastError.message}`)
-      console.error(`   Error details:`, error)
+      logger.error({
+        msg: '❌ [LLM] Provider failed',
+        provider,
+        model: config.model,
+        error: lastError.message,
+        willFallback: i < providers.length - 1
+      })
 
       if (i < providers.length - 1) {
-        console.log(`   🔄 Falling back to next provider...`)
+        logger.info({ msg: '🔄 Falling back to next provider' })
       }
 
       continue
     }
   }
 
-  console.log('\n================================================================================')
-  console.error('❌ [LLM] ALL PROVIDERS FAILED')
-  console.error(`   Attempted: [${attemptedProviders.join(', ')}]`)
-  console.error(`   Skipped: [${skippedProviders.join(', ')}]`)
-  console.error(`   Last error: ${lastError?.message}`)
-  console.log('================================================================================\n')
+  logger.error({
+    msg: '❌ [LLM] All providers failed',
+    attemptedProviders,
+    skippedProviders,
+    lastError: lastError?.message
+  })
 
   throw lastError ?? new Error('All AI providers failed. Please try again.')
 }
 
 async function generateWithProvider (provider: ApiProvider, jobDescription: string, resumeText: string): Promise<TailorResponse> {
   const config = getApiConfig(provider)
-  
-  // Validate API key based on provider
-  console.log('🔍 Provider:', config.provider)
-  console.log('🔍 API Key check:', config.apiKey ? 'FOUND' : 'NOT FOUND')
-  console.log('🤖 Using model:', config.model)
+
+  logger.debug({
+    msg: '🔍 Validating provider configuration',
+    provider: config.provider,
+    model: config.model,
+    hasApiKey: !!config.apiKey
+  })
 
   const keyName = getProviderKeyEnvVar(config.provider)
 
   if (!config.apiKey ||
       config.apiKey === 'placeholder' ||
       config.apiKey.length < 10) {
-    console.error(`❌ Invalid ${keyName}`)
+    logger.error({
+      msg: '❌ Invalid or missing API key',
+      provider: config.provider,
+      keyName
+    })
     const error = new Error(`Invalid or missing ${keyName}. Please check your .env file.`)
     attachProviderMetadata(error, config.provider)
     throw error
@@ -589,24 +654,26 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
     let content: string | null = null
 
     if (config.provider === 'bytez') {
-      console.log('🚀 Calling Bytez API...')
+      logger.info({ msg: '🚀 Calling Bytez API', model: config.model })
       content = await makeBytezRequest(prompt, config)
     } else if (config.provider === 'openrouter') {
-      // OpenRouter API call
-      console.log('🚀 Calling OpenRouter API...')
+      logger.info({ msg: '🚀 Calling OpenRouter API', model: config.model })
       const response = await makeOpenRouterRequest(prompt, config)
       content = response?.choices?.[0]?.message?.content ?? null
     } else if (config.provider === 'groq') {
-      // Groq API call with optimizations and retry logic
-      console.log('🚀 Calling Groq API...')
-      const client = createClient(config)
-      
-      // Groq-specific optimizations
       const maxTokens = parseInt(process.env.GROQ_MAX_TOKENS || '4000')
       const temperature = parseFloat(process.env.GROQ_TEMPERATURE || '0.3')
       const timeoutMs = parseInt(process.env.GROQ_TIMEOUT_MS || '30000')
-      
-      console.log(`⚙️ Groq Config - Max Tokens: ${maxTokens}, Temperature: ${temperature}, Timeout: ${timeoutMs}ms`)
+
+      logger.info({
+        msg: '🚀 Calling Groq API',
+        model: config.model,
+        maxTokens,
+        temperature,
+        timeoutMs
+      })
+
+      const client = createClient(config)
       
       // Retry logic for Groq (up to 3 attempts with exponential backoff)
       const maxRetries = 3
@@ -622,21 +689,26 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
               max_tokens: maxTokens,
               stream: false
             }),
-            new Promise<never>((_, reject) => 
+            new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error('Groq API timeout')), timeoutMs)
             )
           ])
           break // Success, exit retry loop
         } catch (groqError: any) {
-          console.log(`⚠️ Groq API attempt ${attempt}/${maxRetries} failed:`, groqError.message)
-          
+          logger.warn({
+            msg: '⚠️ Groq API attempt failed',
+            attempt,
+            maxRetries,
+            error: groqError.message
+          })
+
           if (attempt === maxRetries) {
             throw groqError // Last attempt, throw the error
           }
-          
+
           // Wait before retry (exponential backoff: 1s, 2s, 4s)
           const waitTime = Math.pow(2, attempt - 1) * 1000
-          console.log(`🔄 Retrying Groq API in ${waitTime}ms...`)
+          logger.info({ msg: '🔄 Retrying Groq API', waitTimeMs: waitTime })
           await delay(waitTime)
         }
       }
@@ -647,13 +719,13 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
 
       content = completion.choices[0]?.message?.content ?? null
     } else if (config.provider === 'gemini') {
-      console.log('🚀 Calling Google Gemini API...')
+      logger.info({ msg: '🚀 Calling Google Gemini API', model: config.model })
       content = await makeGeminiRequest(prompt, config)
     } else if (config.provider === 'together') {
-      console.log('🚀 Calling Together API...')
+      logger.info({ msg: '🚀 Calling Together API', model: config.model })
       content = await makeTogetherRequest(prompt, config)
     } else if (config.provider === 'openai') {
-      console.log('🚀 Calling OpenAI API...')
+      logger.info({ msg: '🚀 Calling OpenAI API', model: config.model })
       const client = createClient(config)
       const completion = await client.chat.completions.create({
         model: config.model,
@@ -666,9 +738,14 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
       // Hugging Face API call with rate limiting
       const client = createClient(config)
       let completion: OpenAI.Chat.Completions.ChatCompletion | undefined
-      
+
       for (let attempt = 1; attempt <= HF_RATE_LIMIT_MAX_RETRIES; attempt++) {
-        console.log(`🚀 Calling Hugging Face API (attempt ${attempt}/${HF_RATE_LIMIT_MAX_RETRIES})...`)
+        logger.info({
+          msg: '🚀 Calling Hugging Face API',
+          model: config.model,
+          attempt,
+          maxAttempts: HF_RATE_LIMIT_MAX_RETRIES
+        })
         await waitForHfSlot()
 
         let retryDelayMs: number | null = null
@@ -693,7 +770,11 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
         }
 
         if (retryDelayMs !== null) {
-          console.warn(`⚠️ Hugging Face rate limit hit (attempt ${attempt}). Retrying in ${retryDelayMs}ms...`)
+          logger.warn({
+            msg: '⚠️ Hugging Face rate limit hit',
+            attempt,
+            retryDelayMs
+          })
           await delay(retryDelayMs)
           continue
         }
@@ -709,13 +790,15 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
     }
 
     if (!content) {
-      console.error('❌ Empty response from model')
+      logger.error({ msg: '❌ Empty response from model', provider: config.provider })
       throw new Error('AI model returned empty response. Please try again.')
     }
 
-    console.log('✅ Received response from model')
-    console.log('📝 Response length:', content.length)
-    console.log('📝 Response preview (first 200 chars):', content.substring(0, 200))
+    logger.debug({
+      msg: '✅ Received response from model',
+      provider: config.provider,
+      responseLength: content.length
+    })
 
     // Clean and parse JSON
     let cleanContent = content
@@ -730,8 +813,11 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
     const jsonEnd = cleanContent.lastIndexOf('}')
 
     if (jsonStart === -1 || jsonEnd === -1) {
-      console.error('❌ No valid JSON brackets found in response')
-      console.error('Raw content preview:', content.substring(0, 500))
+      logger.error({
+        msg: '❌ No valid JSON brackets found in response',
+        provider: config.provider,
+        contentPreview: content.substring(0, 200)
+      })
       throw new Error('AI model did not return JSON. It may be busy or the model needs to warm up. Please wait 30 seconds and try again.')
     }
 
@@ -743,19 +829,31 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
     const closeBrackets = (cleanContent.match(/\}/g) || []).length
 
     if (openBrackets !== closeBrackets) {
-      console.error(`❌ Mismatched brackets: ${openBrackets} open, ${closeBrackets} close`)
+      logger.error({
+        msg: '❌ Mismatched brackets in JSON response',
+        provider: config.provider,
+        openBrackets,
+        closeBrackets
+      })
       throw new Error('AI model returned incomplete JSON. Please try again.')
     }
 
-    console.log('🔍 Extracted JSON length:', cleanContent.length)
-    console.log('🔍 JSON preview:', cleanContent.substring(0, 100) + '...')
+    logger.debug({
+      msg: '🔍 Extracted JSON from response',
+      provider: config.provider,
+      jsonLength: cleanContent.length
+    })
 
     let json
     try {
       json = JSON.parse(cleanContent)
     } catch (parseError: any) {
-      console.error('❌ JSON parse error:', parseError.message)
-      console.error('Failed JSON preview:', cleanContent.substring(0, 500))
+      logger.error({
+        msg: '❌ JSON parse error',
+        provider: config.provider,
+        error: parseError.message,
+        contentPreview: cleanContent.substring(0, 200)
+      })
 
       // Try to give more specific error
       if (parseError.message.includes('Unexpected token')) {
@@ -768,11 +866,19 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
     // Validate response structure
     const parsed = TailorResponseSchema.safeParse(json)
     if (!parsed.success) {
-      console.error('❌ Schema validation failed:', parsed.error.issues)
+      logger.error({
+        msg: '❌ Schema validation failed',
+        provider: config.provider,
+        issues: parsed.error.issues
+      })
       throw new Error('AI model response missing required fields. Please try again.')
     }
 
-    console.log('✅ Response validated successfully')
+    logger.info({
+      msg: '✅ Response validated successfully',
+      provider: config.provider,
+      model: config.model
+    })
     return parsed.data
   } catch (error: any) {
     handleProviderError(config, error)

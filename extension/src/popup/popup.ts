@@ -1193,7 +1193,7 @@ function showResults(data: any): void {
         </button>
       </div>
       <ul style="list-style: none; padding: 0; margin: 0;">
-        ${(data.tailored?.experience_bullets || []).slice(0, 8).map((bullet: string, index: number) => `
+        ${(data.tailored?.experience_bullets || []).map((bullet: string, index: number) => `
           <li style="background: #f8f9fa; padding: 9px 11px; margin: 5px 0; border-radius: 4px; border-left: 2px solid #ddd;">
             <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #333;">
               <span style="color: #0073b1; font-weight: 600; margin-right: 5px;">${index + 1}.</span>${escapeHtml(bullet)}
@@ -1201,13 +1201,6 @@ function showResults(data: any): void {
           </li>
         `).join('')}
       </ul>
-      ${(data.tailored?.experience_bullets || []).length > 8 ? `
-        <div style="text-align: center; padding-top: 8px; border-top: 1px solid #e0e0e0; margin-top: 8px;">
-          <button onclick="showMoreBullets()" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 7px 14px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
-            Show ${(data.tailored?.experience_bullets || []).length - 8} More Bullets (Pro)
-          </button>
-        </div>
-      ` : ''}
     </div>
 
     <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
@@ -1374,14 +1367,13 @@ function copyAllBullets(): void {
     setStatus('No resume bullets to copy');
     return;
   }
-  
+
   const bullets = lastTailoredResult.tailored.experience_bullets
-    .slice(0, 8)
     .map((bullet: string, index: number) => `${index + 1}. ${bullet}`)
     .join('\n\n');
-  
+
   navigator.clipboard.writeText(bullets)
-    .then(() => setStatus('All resume bullets copied to clipboard!'))
+    .then(() => setStatus(`All ${lastTailoredResult.tailored.experience_bullets.length} resume bullets copied to clipboard!`))
     .catch(() => setStatus('Error copying bullets'));
 }
 
