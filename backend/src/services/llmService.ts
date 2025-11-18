@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 import { z } from 'zod'
 import axios from 'axios'
 import Bytez from 'bytez.js'
-import { logger } from '../utils/logger'
+import { logger } from '../utils/logger.js'
 
 const parseEnvInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt((value ?? '').split(/[\s#]/)[0] ?? '', 10)
