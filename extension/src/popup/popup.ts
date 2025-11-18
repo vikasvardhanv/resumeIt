@@ -1121,11 +1121,16 @@ function showResults(data: any): void {
   console.log('🎨 Displaying results:', {
     success: data.success,
     bulletCount: data.tailored?.experience_bullets?.length || 0,
-    displayingBullets: Math.min(8, data.tailored?.experience_bullets?.length || 0)
+    displayingBullets: Math.min(8, data.tailored?.experience_bullets?.length || 0),
+    hasResumeFullText: !!data.resume?.full_text,
+    resumeFullTextLength: data.resume?.full_text?.length || 0,
+    hasCurrentResume: !!currentResume,
+    currentResumePreviewLength: currentResume?.textPreview?.length || 0
   });
-  
+
   lastTailoredResult = data;
-  
+  bulletsDisplayState = 8; // Reset bullet display state
+
   if (resultsSection) {
     resultsSection.classList.remove('hidden');
     resultsSection.style.display = 'block';
@@ -1134,15 +1139,32 @@ function showResults(data: any): void {
   const summary = escapeHtml(data.tailored?.professional_summary || 'Not available');
   const currentJobTitle = escapeHtml(currentJob?.title || 'Position');
   const currentCompany = escapeHtml(currentJob?.company || 'Company');
-  
+
+  // Calculate match insights - function handles its own validation
   const matchInsights = calculateMatchInsights(currentJob, data, currentResume);
+
   const matchScore = typeof matchInsights?.score === 'number'
     ? matchInsights.score
     : (typeof data.match_score === 'number' ? Math.round(Math.max(0, Math.min(100, data.match_score))) : 'N/A');
-  
-  const matchAnalysisBlock = matchInsights
-    ? buildMatchAnalysisHTML(matchInsights)
-    : '<p style="margin: 0;">Upload a resume and keep the job description open to unlock strict AI Match Analysis.</p>';
+
+  // Build match analysis block with proper validation feedback
+  let matchAnalysisBlock = '';
+  if (matchInsights) {
+    matchAnalysisBlock = buildMatchAnalysisHTML(matchInsights);
+  } else {
+    // Determine what's missing for better user feedback
+    const hasResumeText = !!(data.resume?.full_text || currentResume?.textPreview);
+    const hasJobData = !!(currentJob?.description || currentJob?.title);
+
+    let feedbackMessage = 'Upload a resume and open a job description to unlock detailed AI Match Analysis.';
+    if (!hasResumeText && hasJobData) {
+      feedbackMessage = 'Upload your resume to unlock detailed AI Match Analysis with keyword matching, quantified metrics scoring, and ATS recommendations.';
+    } else if (hasResumeText && !hasJobData) {
+      feedbackMessage = 'Open a job description page to unlock detailed AI Match Analysis comparing your resume to job requirements.';
+    }
+
+    matchAnalysisBlock = `<p style="margin: 0; font-size: 13px; line-height: 1.5;">${feedbackMessage}</p>`;
+  }
 
   const projects = Array.isArray(data.projects) ? data.projects.filter((p: any) => (p.relevance_score || 0) >= 70).slice(0, 2) : [];
   const projectMarkup = projects.map((project: any) => buildProjectCardHTML(project)).join('');
@@ -1151,34 +1173,32 @@ function showResults(data: any): void {
   
   const bulletCount = data.tailored?.experience_bullets?.length || 0;
   const skillsCount = data.tailored?.key_skills?.length || 0;
-  const summaryPreview = (data.tailored?.professional_summary || '').substring(0, 100) + '...';
 
   resultsContent.innerHTML = `
-    <div style="background: linear-gradient(135deg, #0073b1 0%, #005a8d 100%); color: white; padding: 14px; margin: 0 0 10px 0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,115,177,0.2);">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+    <div style="background: linear-gradient(135deg, #0073b1 0%, #005a8d 100%); color: white; padding: 16px; margin: 0 0 12px 0; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,115,177,0.25);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <div style="flex: 1;">
-          <h3 style="margin: 0 0 4px 0; font-size: 17px; font-weight: 700; color: white;">${currentJobTitle}</h3>
-          <p style="margin: 0 0 8px 0; font-size: 13px; color: rgba(255,255,255,0.9);">${currentCompany}</p>
-          <p style="margin: 0; font-size: 11px; color: rgba(255,255,255,0.8); line-height: 1.4; font-style: italic;">${escapeHtml(summaryPreview)}</p>
+          <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: white; line-height: 1.3;">${currentJobTitle}</h3>
+          ${currentCompany && currentCompany !== 'Company' ? `<p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.85);">${currentCompany}</p>` : ''}
         </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.15); padding: 10px 14px; border-radius: 8px; min-width: 80px;">
-          <div style="font-size: 28px; font-weight: 700; color: white;">${typeof matchScore === 'number' ? `${matchScore}%` : 'N/A'}</div>
-          <div style="font-size: 10px; color: rgba(255,255,255,0.9); font-weight: 500;">Match</div>
+        <div style="text-align: center; background: rgba(255,255,255,0.18); padding: 12px 16px; border-radius: 10px; min-width: 90px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <div style="font-size: 32px; font-weight: 700; color: white; line-height: 1;">${typeof matchScore === 'number' ? `${matchScore}%` : 'N/A'}</div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.95); font-weight: 600; margin-top: 4px;">ATS Match</div>
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
-        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
-          <div style="font-size: 18px; font-weight: 700;">${bulletCount}</div>
-          <div style="font-size: 9px; opacity: 0.9;">Resume Bullets</div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.25);">
+        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
+          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${bulletCount}</div>
+          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Resume Bullets</div>
         </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
-          <div style="font-size: 18px; font-weight: 700;">${skillsCount}</div>
-          <div style="font-size: 9px; opacity: 0.9;">Key Skills</div>
+        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
+          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${skillsCount}</div>
+          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Key Skills</div>
         </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
-          <div style="font-size: 18px; font-weight: 700;">${projects.length}</div>
-          <div style="font-size: 9px; opacity: 0.9;">Projects</div>
+        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
+          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${projects.length}</div>
+          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Projects</div>
         </div>
       </div>
     </div>
@@ -1186,7 +1206,7 @@ function showResults(data: any): void {
     <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
         <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Professional Summary</h4>
-        <button onclick="copyToClipboard(\`${summary.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, 'Summary')" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy</button>
+        <button id="copySummaryBtn" data-text="${summary.replace(/"/g, '&quot;')}" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy</button>
       </div>
       <p style="margin: 0; line-height: 1.5; color: #333; font-size: 13px;">${summary}</p>
     </div>
@@ -1208,12 +1228,12 @@ function showResults(data: any): void {
     <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Ready-to-Use Resume Bullets</h4>
-        <button onclick="copyAllBullets()" style="background: #0073b1; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+        <button id="copyAllBulletsBtn" style="background: #0073b1; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
           Copy All
         </button>
       </div>
-      <ul style="list-style: none; padding: 0; margin: 0;">
-        ${(data.tailored?.experience_bullets || []).map((bullet: string, index: number) => `
+      <ul id="resumeBulletsList" style="list-style: none; padding: 0; margin: 0;">
+        ${(data.tailored?.experience_bullets || []).slice(0, 8).map((bullet: string, index: number) => `
           <li style="background: #f8f9fa; padding: 9px 11px; margin: 5px 0; border-radius: 4px; border-left: 2px solid #ddd;">
             <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #333;">
               <span style="color: #0073b1; font-weight: 600; margin-right: 5px;">${index + 1}.</span>${escapeHtml(bullet)}
@@ -1221,12 +1241,19 @@ function showResults(data: any): void {
           </li>
         `).join('')}
       </ul>
+      ${bulletCount > 8 ? `
+        <div id="showMoreBulletsContainer" style="text-align: center; margin-top: 10px;">
+          <button id="showMoreBulletsBtn" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 6px 16px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+            Show More (${Math.min(2, bulletCount - 8)} more)
+          </button>
+        </div>
+      ` : ''}
     </div>
 
     <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">ATS Keywords</h4>
-        <button onclick="copyKeywords()" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy All</button>
+        <button id="copyKeywordsBtn" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy All</button>
       </div>
       <div style="line-height: 1.6;">
         ${(data.tailored?.suggested_keywords || []).map((keyword: string) => `<span style="display: inline-block; background: #e3f2fd; color: #0277bd; padding: 4px 8px; border-radius: 12px; font-size: 11px; margin: 2px; border: 1px solid #bbdefb;">${escapeHtml(keyword)}</span>`).join('')}
@@ -1248,67 +1275,148 @@ function showResults(data: any): void {
     <div style="background: #f8f9fa; border: 1px dashed #ccc; padding: 12px 14px; margin: 0 0 8px 0; border-radius: 4px; text-align: center;">
       <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #333;">Premium Features Available</h4>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;">
-        <button onclick="showPremiumFeature('ats-analysis')" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
+        <button class="premium-feature-btn" data-feature="ats-analysis" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
           ATS Deep Scan
         </button>
-        <button onclick="showPremiumFeature('cover-letter')" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
+        <button class="premium-feature-btn" data-feature="cover-letter" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
           Cover Letter
         </button>
-        <button onclick="showPremiumFeature('salary-insights')" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
+        <button class="premium-feature-btn" data-feature="salary-insights" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
           Salary Intel
         </button>
-        <button onclick="showPremiumFeature('interview-prep')" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
+        <button class="premium-feature-btn" data-feature="interview-prep" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
           Interview Prep
         </button>
       </div>
-      <button onclick="showUpgradeModal()" style="background: #0073b1; color: white; border: none; padding: 9px 18px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 600; margin-top: 6px;">
+      <button id="upgradeModalBtn" style="background: #0073b1; color: white; border: none; padding: 9px 18px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 600; margin-top: 6px;">
         Upgrade to Premium - $9.99/month
       </button>
     </div>
 
     <div style="display: flex; gap: 8px; justify-content: center; margin-top: 10px; padding: 10px 0 4px 0; border-top: 2px solid #e0e0e0;">
-      <button id="copyBtn" onclick="handleCopyFromInline()" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
+      <button id="copyBtn" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
         Copy
       </button>
-      <button id="downloadBtn" onclick="handleDownloadFromInline()" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
+      <button id="downloadBtn" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
         Download
       </button>
-      <button id="refreshResultsBtn" onclick="clearResultsFromInline()" style="flex: 1; background: #fff; color: #dc2626; border: 1px solid #dc2626; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
+      <button id="refreshResultsBtn" style="flex: 1; background: #fff; color: #dc2626; border: 1px solid #dc2626; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
         Clear
       </button>
     </div>
   `;
+
+  // Attach event listeners to dynamically created buttons
+  const copyAllBulletsBtn = document.getElementById('copyAllBulletsBtn');
+  if (copyAllBulletsBtn) {
+    copyAllBulletsBtn.addEventListener('click', copyAllBullets);
+  }
+
+  const showMoreBulletsBtn = document.getElementById('showMoreBulletsBtn');
+  if (showMoreBulletsBtn) {
+    showMoreBulletsBtn.addEventListener('click', handleShowMoreBullets);
+  }
+
+  const copySummaryBtn = document.getElementById('copySummaryBtn');
+  if (copySummaryBtn) {
+    copySummaryBtn.addEventListener('click', () => {
+      const text = copySummaryBtn.getAttribute('data-text') || '';
+      copyToClipboard(text, 'Summary');
+    });
+  }
+
+  const copyKeywordsBtn = document.getElementById('copyKeywordsBtn');
+  if (copyKeywordsBtn) {
+    copyKeywordsBtn.addEventListener('click', copyKeywords);
+  }
+
+  const copyBtn = document.getElementById('copyBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', handleCopy);
+  }
+
+  const downloadBtn = document.getElementById('downloadBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', handleDownload);
+  }
+
+  const refreshResultsBtn = document.getElementById('refreshResultsBtn');
+  if (refreshResultsBtn) {
+    refreshResultsBtn.addEventListener('click', clearResults);
+  }
+
+  // Premium feature buttons
+  const premiumFeatureBtns = document.querySelectorAll('.premium-feature-btn');
+  premiumFeatureBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const feature = btn.getAttribute('data-feature');
+      if (feature) showPremiumFeature(feature);
+    });
+  });
+
+  const upgradeModalBtn = document.getElementById('upgradeModalBtn');
+  if (upgradeModalBtn) {
+    upgradeModalBtn.addEventListener('click', showUpgradeModal);
+  }
+
+  // Project card click handlers
+  const projectCards = document.querySelectorAll('.project-card');
+  projectCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const title = card.getAttribute('data-title') || '';
+      const description = card.getAttribute('data-description') || '';
+      const technologies = card.getAttribute('data-technologies') || '';
+      showProjectDetails(title, description, technologies);
+    });
+  });
 }
 
 function buildMatchAnalysisHTML(insights: MatchInsights): string {
+  // Determine priority level based on coverage
+  const coverage = Math.round(insights.coverage * 100);
+  const priorityLabel = coverage < 50 ? '🚨 CRITICAL' : coverage < 70 ? '⚠️ NEEDS WORK' : coverage < 85 ? '✓ GOOD' : '✓✓ STRONG';
+  const priorityColor = coverage < 50 ? '#dc2626' : coverage < 70 ? '#f59e0b' : coverage < 85 ? '#10b981' : '#059669';
+
   return `
     <div style="margin: 15px 0;">
-      <p style="margin: 0 0 10px 0; font-size: 13px; font-weight: 600;">
-        Resume vs Job Requirements Analysis
-      </p>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <p style="margin: 0; font-size: 14px; font-weight: 700; color: white;">
+          Resume vs Job Requirements Analysis
+        </p>
+        <span style="background: ${priorityColor}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">
+          ${priorityLabel}
+        </span>
+      </div>
+      
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0;">
-        <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 20px; font-weight: 700;">${Math.round(insights.coverage * 100)}%</div>
-          <div style="font-size: 10px; opacity: 0.9;">Keyword Match</div>
+        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center; border: 2px solid ${coverage < 70 ? 'rgba(220, 38, 38, 0.4)' : 'rgba(255,255,255,0.2)'};">
+          <div style="font-size: 24px; font-weight: 700; color: white;">${coverage}%</div>
+          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Keyword Match</div>
         </div>
-        <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 20px; font-weight: 700;">${insights.quantifiedCount}/${Math.max(6, insights.quantifiedCount + 2)}</div>
-          <div style="font-size: 10px; opacity: 0.9;">Quantified Bullets</div>
+        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center;">
+          <div style="font-size: 24px; font-weight: 700; color: white;">${insights.quantifiedCount}/${Math.max(6, insights.quantifiedCount + 2)}</div>
+          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Quantified Bullets</div>
         </div>
-        <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 20px; font-weight: 700;">${insights.actionVerbHits}</div>
-          <div style="font-size: 10px; opacity: 0.9;">Action Verbs</div>
+        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center;">
+          <div style="font-size: 24px; font-weight: 700; color: white;">${insights.actionVerbHits}</div>
+          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Action Verbs</div>
         </div>
       </div>
-      <div style="background: rgba(255,255,255,0.18); border-radius: 10px; padding: 14px; margin-top: 15px; text-align: left;">
-        <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 13px;">ATS & Hiring Manager Recommendations</p>
-        <ul style="margin: 0; padding-left: 0; list-style: none; font-size: 12px; line-height: 1.6;">
-          ${insights.bulletPoints.map((point: string) => `
-            <li style="margin-bottom: 10px; padding-left: 18px; position: relative;">
-              <span style="position: absolute; left: 0; top: 2px;">•</span>
-              ${point}
+      
+      <div style="background: rgba(255,255,255,0.95); border-radius: 10px; padding: 16px; margin-top: 15px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <p style="margin: 0 0 14px 0; font-weight: 700; font-size: 14px; color: #1a1a1a; border-bottom: 2px solid #0073b1; padding-bottom: 8px;">
+          📋 Action Items to Improve Your Resume
+        </p>
+        <ul style="margin: 0; padding-left: 0; list-style: none; font-size: 13px; line-height: 1.7; color: #333;">
+          ${insights.bulletPoints.map((point: string, index: number) => {
+            // Highlight critical items (coverage, skills gap)
+            const isCritical = index < 2 && coverage < 70;
+            return `
+            <li style="margin-bottom: 12px; padding: 10px; padding-left: 28px; position: relative; background: ${isCritical ? '#fef2f2' : '#f9fafb'}; border-left: 3px solid ${isCritical ? '#dc2626' : '#0073b1'}; border-radius: 4px;">
+              <span style="position: absolute; left: 10px; top: 12px; font-weight: 700; color: ${isCritical ? '#dc2626' : '#0073b1'};">${index + 1}.</span>
+              <span style="font-weight: ${isCritical ? '600' : '400'}; color: ${isCritical ? '#991b1b' : '#333'};">${point}</span>
             </li>
-          `).join('')}
+          `}).join('')}
         </ul>
       </div>
     </div>
@@ -1316,10 +1424,14 @@ function buildMatchAnalysisHTML(insights: MatchInsights): string {
 }
 
 function buildProjectCardHTML(project: any): string {
+  const title = escapeHtml(project.title || 'Project');
+  const description = escapeHtml(project.description || '');
+  const technologies = (project.technologies || []).join(', ');
+
   return `
-    <div class="project-card" onclick="showProjectDetails('${escapeHtml(project.title || 'Project').replace(/'/g, "\\'")}', '${escapeHtml(project.description || '').replace(/'/g, "\\'")}', '${(project.technologies || []).join(', ')}')">
-      <h4>${escapeHtml(project.title || 'Project')}</h4>
-      <p>${escapeHtml(project.description || '')}</p>
+    <div class="project-card" data-title="${title.replace(/"/g, '&quot;')}" data-description="${description.replace(/"/g, '&quot;')}" data-technologies="${technologies.replace(/"/g, '&quot;')}" style="cursor: pointer;">
+      <h4>${title}</h4>
+      <p>${description}</p>
       <div class="project-tech">${(project.technologies || []).map((tech: string) => `<span>${escapeHtml(tech)}</span>`).join('')}</div>
       <div class="relevance-score">Relevance: ${project.relevance_score || 'N/A'}%</div>
     </div>
@@ -1402,17 +1514,72 @@ function showMoreBullets(): void {
     setStatus('No additional bullets available');
     return;
   }
-  
+
   const totalBullets = lastTailoredResult.tailored.experience_bullets.length;
   if (totalBullets <= 8) {
     setStatus('All bullets are already displayed');
     return;
   }
-  
+
   setStatus(`Upgrade to Pro to unlock ${totalBullets - 8} additional resume bullets!`);
   setTimeout(() => {
     setStatus('Pro features include: unlimited bullets, advanced ATS analysis, and more.');
   }, 2500);
+}
+
+let bulletsDisplayState = 8; // Track how many bullets are currently shown
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function handleShowMoreBullets(): void {
+  if (!lastTailoredResult?.tailored?.experience_bullets) {
+    setStatus('No additional bullets available');
+    return;
+  }
+
+  const totalBullets = lastTailoredResult.tailored.experience_bullets.length;
+  const bulletsList = document.getElementById('resumeBulletsList');
+  const showMoreContainer = document.getElementById('showMoreBulletsContainer');
+
+  if (!bulletsList || !showMoreContainer) return;
+
+  if (bulletsDisplayState === 8 && totalBullets > 8) {
+    // Show 2 more bullets (total 10)
+    const additionalBullets = lastTailoredResult.tailored.experience_bullets.slice(8, 10);
+    additionalBullets.forEach((bullet: string, idx: number) => {
+      const index = 8 + idx;
+      const li = document.createElement('li');
+      li.style.cssText = 'background: #f8f9fa; padding: 9px 11px; margin: 5px 0; border-radius: 4px; border-left: 2px solid #ddd;';
+      li.innerHTML = `
+        <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #333;">
+          <span style="color: #0073b1; font-weight: 600; margin-right: 5px;">${index + 1}.</span>${escapeHtml(bullet)}
+        </p>
+      `;
+      bulletsList.appendChild(li);
+    });
+
+    bulletsDisplayState = 10;
+
+    // Replace button with upgrade link
+    if (totalBullets > 10) {
+      showMoreContainer.innerHTML = `
+        <button id="bulletUpgradeBtn" style="background: linear-gradient(135deg, #0073b1, #005a8d); color: white; border: none; padding: 8px 20px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 6px rgba(0,115,177,0.3);">
+          Upgrade to Premium - $9.99/month
+        </button>
+        <p style="margin: 6px 0 0 0; font-size: 10px; color: #666;">Unlock ${totalBullets - 10} more resume bullets and premium features</p>
+      `;
+
+      // Add event listener to the new upgrade button
+      const bulletUpgradeBtn = document.getElementById('bulletUpgradeBtn');
+      if (bulletUpgradeBtn) {
+        bulletUpgradeBtn.addEventListener('click', () => redirectToPremium('resume-bullets'));
+      }
+    } else {
+      // All bullets shown, remove the button
+      showMoreContainer.remove();
+    }
+
+    setStatus('Showing 2 more bullets');
+  }
 }
 
 function downloadPremiumPreview(): void {
@@ -1506,20 +1673,20 @@ function showProjectDetails(title: string, description: string, technologies: st
     <div class="modal-content">
       <div class="modal-header">
         <h3>${title}</h3>
-        <button class="close-modal" onclick="closeProjectModal()">&times;</button>
+        <button class="close-modal">&times;</button>
       </div>
       <div class="modal-body">
         <div class="project-details">
           <h4>Project Description</h4>
           <p>${description}</p>
-          
+
           <h4>Technologies</h4>
           <div class="tech-list">
             ${technologies.split(', ').map(tech => `<span class="tech-tag">${tech}</span>`).join('')}
           </div>
-          
+
           <div class="project-actions">
-            <button class="action-btn primary" onclick="copyProjectDetails('${title}', '${description}', '${technologies}')">
+            <button class="action-btn primary copy-project-btn">
               Copy Project Details
             </button>
           </div>
@@ -1527,9 +1694,27 @@ function showProjectDetails(title: string, description: string, technologies: st
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(modal);
   modal.style.display = 'flex';
+
+  // Add event listeners
+  const closeBtn = modal.querySelector('.close-modal');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => closeProjectModal());
+  }
+
+  const copyBtn = modal.querySelector('.copy-project-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => copyProjectDetails(title, description, technologies));
+  }
+
+  // Close modal when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeProjectModal();
+    }
+  });
 }
 
 function closeProjectModal(): void {
@@ -1566,17 +1751,55 @@ Implementation Tips:
 // ============================================================================
 
 function calculateMatchInsights(job: any, resultData: any, resumeData: ResumeSessionData | null): MatchInsights | null {
-  const resumeText = (resultData.resume?.full_text || resumeData?.textPreview || '').toLowerCase();
+  // Try multiple sources for resume text
+  let resumeText = resultData.resume?.full_text || resumeData?.textPreview || '';
+
+  // Fallback: If no full text, construct from tailored content
+  if (!resumeText.trim() && resultData.tailored) {
+    const tailoredParts: string[] = [];
+    if (resultData.tailored.professional_summary) {
+      tailoredParts.push(resultData.tailored.professional_summary);
+    }
+    if (Array.isArray(resultData.tailored.experience_bullets)) {
+      tailoredParts.push(resultData.tailored.experience_bullets.join(' '));
+    }
+    if (Array.isArray(resultData.tailored.key_skills)) {
+      tailoredParts.push(resultData.tailored.key_skills.join(' '));
+    }
+    resumeText = tailoredParts.join(' ');
+  }
+
+  resumeText = resumeText.toLowerCase();
+
   const jobSegments: string[] = [];
-  
   if (job?.title) jobSegments.push(job.title);
   if (job?.company) jobSegments.push(job.company);
   if (job?.description) jobSegments.push(job.description);
   if (Array.isArray(job?.requirements)) jobSegments.push(job.requirements.join(' '));
-  
+
   const jobText = jobSegments.join(' ').toLowerCase();
 
+  console.log('🔍 Match Analysis Debug:', {
+    hasResumeFullText: !!resultData.resume?.full_text,
+    hasResumePreview: !!resumeData?.textPreview,
+    hasTailoredContent: !!resultData.tailored,
+    finalResumeTextLength: resumeText.length,
+    hasJobText: !!jobText.trim(),
+    jobTextLength: jobText.length,
+    jobTitle: job?.title,
+    hasDescription: !!job?.description,
+    sources: {
+      fromFullText: !!resultData.resume?.full_text,
+      fromPreview: !!resumeData?.textPreview,
+      fromTailored: !resultData.resume?.full_text && !resumeData?.textPreview && !!resultData.tailored
+    }
+  });
+
   if (!resumeText.trim() || !jobText.trim()) {
+    console.warn('⚠️ Match analysis skipped - missing resume or job text', {
+      hasResume: !!resumeText.trim(),
+      hasJob: !!jobText.trim()
+    });
     return null;
   }
 
@@ -1684,70 +1907,75 @@ function extractTopKeywords(text: string, limit: number): string[] {
 function buildEvidenceBullets(ctx: EvidenceContext): string[] {
   const coveragePct = Math.round(ctx.coverage * 100);
   const recommendations: string[] = [];
-  
+
+  // Priority 1: Overall Match Score with specific action
   if (ctx.coverage < 0.5) {
     recommendations.push(
-      `<strong>Critical Mismatch:</strong> Your resume matches only ${coveragePct}% of the required skills and experience. Focus on: ${ctx.missingKeywords.slice(0, 4).join(', ')}.`
+      `<strong>🚨 CRITICAL - Low Match (${coveragePct}%):</strong> Your resume has significant gaps. IMMEDIATE ACTION: Add 2-3 bullet points highlighting your experience with <u>${ctx.missingKeywords.slice(0, 3).join(', ')}</u>. Even transferable skills count.`
     );
   } else if (ctx.coverage < 0.7) {
     recommendations.push(
-      `<strong>Moderate Match:</strong> ${coveragePct}% alignment with job requirements. To improve, add experience with: ${ctx.missingKeywords.slice(0, 3).join(', ')}.`
+      `<strong>⚠️ MODERATE Match (${coveragePct}%):</strong> You're in the running but need improvements. ACTION: Revise your summary and experience sections to include these keywords: <u>${ctx.missingKeywords.slice(0, 3).join(', ')}</u>.`
     );
   } else if (ctx.coverage < 0.85) {
     recommendations.push(
-      `<strong>Good Match:</strong> ${coveragePct}% keyword coverage. You're competitive. Strengthen by highlighting: ${ctx.missingKeywords.slice(0, 2).join(', ')}.`
+      `<strong>✓ GOOD Match (${coveragePct}%):</strong> You're competitive! OPTIMIZATION: Add 1-2 mentions of <u>${ctx.missingKeywords.slice(0, 2).join(', ')}</u> to push your score above 85%.`
     );
   } else {
     recommendations.push(
-      `<strong>Strong Match:</strong> ${coveragePct}% alignment detected. Your experience closely matches the requirements for ${ctx.jobTitle}.`
+      `<strong>✓✓ EXCELLENT Match (${coveragePct}%):</strong> Your resume strongly aligns with ${ctx.jobTitle}. You're well-positioned for this role. Focus on tailoring your cover letter.`
     );
   }
   
-  if (ctx.missingKeywords.length > 0) {
+  // Missing Keywords - Specific and Actionable
+  if (ctx.missingKeywords.length > 0 && ctx.coverage < 0.85) {
     const criticalMissing = ctx.missingKeywords.slice(0, 4);
     if (criticalMissing.length <= 2) {
       recommendations.push(
-        `<strong>Skills Gap:</strong> Add ${criticalMissing.join(' and ')} to your experience if you have relevant work in these areas.`
+        `<strong>🔑 Close the Gap:</strong> Add <u>${criticalMissing.join(' and ')}</u> to your experience section. Even if not central to your role, mention any exposure: "Collaborated with teams using ${criticalMissing[0]}" or "Gained familiarity with ${criticalMissing[0]} through X project".`
       );
     } else {
       recommendations.push(
-        `<strong>Key Skills Missing:</strong> The job emphasizes ${criticalMissing.join(', ')}. Add specific examples where you used these skills or technologies.`
+        `<strong>🎯 Priority Keywords:</strong> Job emphasizes <u>${criticalMissing.slice(0, 3).join(', ')}</u>. ACTION: Review each bullet point and naturally integrate 2-3 of these terms where truthful. Example: "Developed solutions" → "Developed ${criticalMissing[0]}-based solutions".`
       );
     }
   }
   
+  // Priority 2: Quantified Achievements (Crucial for ATS and hiring managers)
   if (ctx.quantifiedCount < 3) {
     recommendations.push(
-      `<strong>Add Metrics:</strong> Only ${ctx.quantifiedCount} quantified results found. Add specific numbers showing impact (e.g., "reduced time by 30%", "managed team of 5", "processed 10K+ records").`
+      `<strong>📊 URGENT - Add Numbers:</strong> Only ${ctx.quantifiedCount} quantified results found. ATS systems prioritize metrics. ADD NOW: "Improved X by Y%", "Managed team of Z", "Processed N+ records/day". Convert 3-4 bullets to include specific numbers.`
     );
   } else if (ctx.quantifiedCount < 5) {
     recommendations.push(
-      `<strong>Strengthen Impact:</strong> You have ${ctx.quantifiedCount} quantified achievements. Add ${6 - ctx.quantifiedCount} more with concrete metrics to demonstrate measurable results.`
+      `<strong>📈 Strengthen Impact:</strong> ${ctx.quantifiedCount} quantified achievements is good, but ${6 - ctx.quantifiedCount} more would make you stand out. Example: Change "Led project" → "Led 5-person project delivering 25% efficiency gain".`
     );
   } else {
     recommendations.push(
-      `<strong>Results-Focused:</strong> ${ctx.quantifiedCount} quantified achievements demonstrate clear impact. This strengthens your candidacy significantly.`
+      `<strong>💪 Excellent Impact:</strong> ${ctx.quantifiedCount} quantified achievements clearly demonstrate measurable results. This is a major strength in your application.`
     );
   }
   
+  // Priority 3: Action Verbs (Critical for ATS parsing)
   if (ctx.actionVerbHits < 3) {
     recommendations.push(
-      `<strong>Weak Action Verbs:</strong> Only ${ctx.actionVerbHits} strong action verbs detected. Begin bullets with: Developed, Implemented, Led, Designed, Built, Optimized, Managed.`
+      `<strong>⚡ Fix Weak Verbs:</strong> Only ${ctx.actionVerbHits} strong action verbs detected. REPLACE NOW: Change passive phrases like "Responsible for" or "Worked on" → Start with "Developed", "Implemented", "Led", "Architected", "Optimized", "Delivered".`
     );
   } else if (ctx.actionVerbHits < 6) {
     recommendations.push(
-      `<strong>Good Start:</strong> ${ctx.actionVerbHits} action verbs found. For stronger impact, use varied leadership verbs throughout your experience section.`
+      `<strong>🎯 Good Verbs, Add Variety:</strong> ${ctx.actionVerbHits} action verbs found. Enhance impact: Mix technical verbs (Built, Engineered) with leadership verbs (Spearheaded, Championed) for different accomplishments.`
     );
   } else {
     recommendations.push(
-      `<strong>Strong Language:</strong> ${ctx.actionVerbHits} impactful action verbs convey ownership and initiative, which aligns well with this role's requirements.`
+      `<strong>💼 Strong Professional Language:</strong> ${ctx.actionVerbHits} impactful action verbs demonstrate ownership and drive. Your resume conveys clear initiative.`
     );
   }
   
+  // Highlight Strengths - Encouraging and Specific
   if (ctx.matchedKeywords.length >= 3) {
     const topMatches = ctx.matchedKeywords.slice(0, 4);
     recommendations.push(
-      `<strong>Your Strengths:</strong> Resume clearly demonstrates experience with ${topMatches.join(', ')}. These are directly relevant to the position.`
+      `<strong>✨ Your Competitive Edge:</strong> You have proven experience with <u>${topMatches.join(', ')}</u> - these are core requirements for this role. LEVERAGE THIS: Mention these prominently in your cover letter and interview prep.`
     );
   }
   
