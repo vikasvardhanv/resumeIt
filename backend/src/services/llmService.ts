@@ -430,6 +430,10 @@ Return this exact JSON structure:
   "tailored": {
     "professional_summary": "ATS-optimized 2-3 sentence summary highlighting relevant experience",
     "key_skills": ["skill1", "skill2", "skill3", "skill4", "skill5", "skill6", "skill7", "skill8"],
+
+    // IMPORTANT: The bullets below are EXAMPLES to show quality level.
+    // Generate 10-12 NEW bullets tailored to THIS specific job and resume.
+    // Do NOT copy these examples - create original bullets based on the candidate's actual experience.
     "experience_bullets": [
       "Developed and maintained production-grade system handling 15K+ daily requests with 99.9% uptime",
       "Architected scalable microservices reducing query response time from 8s to 800ms",

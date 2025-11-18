@@ -1149,16 +1149,36 @@ function showResults(data: any): void {
 
   if (!resultsContent) return;
   
+  const bulletCount = data.tailored?.experience_bullets?.length || 0;
+  const skillsCount = data.tailored?.key_skills?.length || 0;
+  const summaryPreview = (data.tailored?.professional_summary || '').substring(0, 100) + '...';
+
   resultsContent.innerHTML = `
-    <div style="background: #f8f9fa; border-bottom: 2px solid #0073b1; padding: 10px 14px; margin: 0 0 10px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <h3 style="margin: 0 0 2px 0; font-size: 16px; font-weight: 600; color: #1a1a1a;">${currentJobTitle}</h3>
-          <p style="margin: 0; font-size: 13px; color: #666;">${currentCompany}</p>
+    <div style="background: linear-gradient(135deg, #0073b1 0%, #005a8d 100%); color: white; padding: 14px; margin: 0 0 10px 0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,115,177,0.2);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+        <div style="flex: 1;">
+          <h3 style="margin: 0 0 4px 0; font-size: 17px; font-weight: 700; color: white;">${currentJobTitle}</h3>
+          <p style="margin: 0 0 8px 0; font-size: 13px; color: rgba(255,255,255,0.9);">${currentCompany}</p>
+          <p style="margin: 0; font-size: 11px; color: rgba(255,255,255,0.8); line-height: 1.4; font-style: italic;">${escapeHtml(summaryPreview)}</p>
         </div>
-        <div style="text-align: right;">
-          <div style="font-size: 24px; font-weight: 700; color: #0073b1;">${typeof matchScore === 'number' ? `${matchScore}%` : 'N/A'}</div>
-          <div style="font-size: 11px; color: #666;">Match Score</div>
+        <div style="text-align: center; background: rgba(255,255,255,0.15); padding: 10px 14px; border-radius: 8px; min-width: 80px;">
+          <div style="font-size: 28px; font-weight: 700; color: white;">${typeof matchScore === 'number' ? `${matchScore}%` : 'N/A'}</div>
+          <div style="font-size: 10px; color: rgba(255,255,255,0.9); font-weight: 500;">Match</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
+          <div style="font-size: 18px; font-weight: 700;">${bulletCount}</div>
+          <div style="font-size: 9px; opacity: 0.9;">Resume Bullets</div>
+        </div>
+        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
+          <div style="font-size: 18px; font-weight: 700;">${skillsCount}</div>
+          <div style="font-size: 9px; opacity: 0.9;">Key Skills</div>
+        </div>
+        <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 6px; border-radius: 6px;">
+          <div style="font-size: 18px; font-weight: 700;">${projects.length}</div>
+          <div style="font-size: 9px; opacity: 0.9;">Projects</div>
         </div>
       </div>
     </div>
