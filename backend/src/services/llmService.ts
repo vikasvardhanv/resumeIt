@@ -222,7 +222,7 @@ const makeOpenRouterRequest = async (prompt: string, config: ApiConfig): Promise
       }
     }
   )
-  
+
   return response.data
 }
 
@@ -322,6 +322,39 @@ const makeTogetherRequest = async (prompt: string, config: ApiConfig): Promise<s
   return content
 }
 
+const PercentageMetricSchema = z.object({
+  value: z.number().min(0).max(100),
+  note: z.string().optional(),
+  status: z.string().optional()
+})
+
+const CountMetricSchema = z.object({
+  count: z.number().min(0),
+  note: z.string().optional()
+})
+
+const AnalysisInsightsSchema = z.object({
+  snapshot: z.object({
+    match_health: z.string().optional(),
+    summary: z.string().optional(),
+    alignment_text: z.string().optional(),
+    strengths: z.string().optional(),
+    requirement_match: PercentageMetricSchema.optional(),
+    quantified_bullets: CountMetricSchema.optional(),
+    action_verbs: CountMetricSchema.optional()
+  }).optional(),
+  keyword_gaps: z.object({
+    missing: z.array(z.string()).optional(),
+    covered: z.array(z.string()).optional(),
+    missing_note: z.string().optional(),
+    covered_note: z.string().optional()
+  }).optional(),
+  action_plan: z.array(z.object({
+    priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+    recommendation: z.string()
+  })).optional()
+})
+
 // Enhanced response schema with dynamic resume points
 export const TailorResponseSchema = z.object({
   tailored: z.object({
@@ -372,7 +405,8 @@ export const TailorResponseSchema = z.object({
     strengths: z.array(z.string()),
     gaps: z.array(z.string()),
     improvement_areas: z.array(z.string())
-  })
+  }),
+  analysis_insights: AnalysisInsightsSchema.optional()
 })
 
 export type TailorResponse = z.infer<typeof TailorResponseSchema>
@@ -511,12 +545,39 @@ Return this exact JSON structure:
       "Quantify achievements related to [job requirement]",
       "Emphasize experience with [technology/methodology] if available in work history"
     ]
+  },
+  "analysis_insights": {
+    "snapshot": {
+      "match_health": "🚨 CRITICAL | ⚠️ NEEDS ATTENTION | ✓ COMPETITIVE | ✓✓ ADVANTAGE",
+      "summary": "2 sentence overview of how well the resume aligns",
+      "alignment_text": "1 sentence describing the key alignment or risk",
+      "requirement_match": { "value": 48, "note": "Missing SQL + Tableau exposure" },
+      "quantified_bullets": { "count": 6, "note": "Metrics exist but lean on delivery rather than analytics" },
+      "action_verbs": { "count": 4, "note": "Open with more decisive verbs focused on BI outcomes" },
+      "strengths": "Short highlight sentence summarizing existing strengths aligned to the job"
+    },
+    "keyword_gaps": {
+      "missing": ["SQL", "Data cleansing", "Tableau dashboards"],
+      "covered": ["Agile stakeholder management", "Retail POS analytics"],
+      "missing_note": "Explain why missing keywords matter for this role",
+      "covered_note": "Explain why the covered strengths still help for BI"
+    },
+    "action_plan": [
+      {
+        "priority": "critical",
+        "recommendation": "Add a SQL-based analysis bullet that references pricing or lifecycle modeling stats"
+      },
+      {
+        "priority": "high",
+        "recommendation": "Describe a dashboard or reporting project (even if internal) and mention Tableau/PowerBI exposure"
+      }
+    ]
   }
 }
 
 IMPORTANT: Respond ONLY with the JSON object. No explanatory text.`
 
-export async function generateTailored (jobDescription: string, resumeText: string): Promise<TailorResponse> {
+export async function generateTailored(jobDescription: string, resumeText: string): Promise<TailorResponse> {
   resetUsageWindowIfNeeded()
   const providers = getProviderChain()
 
@@ -605,9 +666,10 @@ export async function generateTailored (jobDescription: string, resumeText: stri
 
       if (i < providers.length - 1) {
         logger.info({ msg: '🔄 Falling back to next provider' })
+        // Wait a bit before trying next provider to avoid rapid-fire failures
+        await delay(1000)
+        continue
       }
-
-      continue
     }
   }
 
@@ -618,10 +680,11 @@ export async function generateTailored (jobDescription: string, resumeText: stri
     lastError: lastError?.message
   })
 
+  // If we have a specific error from the last provider, throw that, otherwise generic
   throw lastError ?? new Error('All AI providers failed. Please try again.')
 }
 
-async function generateWithProvider (provider: ApiProvider, jobDescription: string, resumeText: string): Promise<TailorResponse> {
+async function generateWithProvider(provider: ApiProvider, jobDescription: string, resumeText: string): Promise<TailorResponse> {
   const config = getApiConfig(provider)
 
   logger.debug({
@@ -634,8 +697,8 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
   const keyName = getProviderKeyEnvVar(config.provider)
 
   if (!config.apiKey ||
-      config.apiKey === 'placeholder' ||
-      config.apiKey.length < 10) {
+    config.apiKey === 'placeholder' ||
+    config.apiKey.length < 10) {
     logger.error({
       msg: '❌ Invalid or missing API key',
       provider: config.provider,
@@ -675,7 +738,7 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
       })
 
       const client = createClient(config)
-      
+
       // Retry logic for Groq (up to 3 attempts with exponential backoff)
       const maxRetries = 3
       let completion: OpenAI.Chat.Completions.ChatCompletion | undefined
@@ -886,7 +949,7 @@ async function generateWithProvider (provider: ApiProvider, jobDescription: stri
   }
 }
 
-function getProviderChain (): ApiProvider[] {
+function getProviderChain(): ApiProvider[] {
   const chainEnv = process.env.LLM_PROVIDER_CHAIN
   const fromChain = chainEnv
     ? chainEnv.split(',').map(item => item.trim()).filter(Boolean).map(normalizeProvider)
@@ -904,7 +967,7 @@ function getProviderChain (): ApiProvider[] {
   return DEFAULT_PROVIDER_CHAIN.slice()
 }
 
-function buildPriorityChain (): ApiProvider[] {
+function buildPriorityChain(): ApiProvider[] {
   const stages = [
     process.env.PRIMARY_LLM_PROVIDER,
     process.env.FALLBACK_1_PROVIDER,
@@ -918,7 +981,7 @@ function buildPriorityChain (): ApiProvider[] {
     .map(value => normalizeProvider(value!))
 }
 
-function dedupeProviders (providers: ApiProvider[]): ApiProvider[] {
+function dedupeProviders(providers: ApiProvider[]): ApiProvider[] {
   const seen = new Set<ApiProvider>()
   const ordered: ApiProvider[] = []
   for (const p of providers) {
@@ -930,7 +993,7 @@ function dedupeProviders (providers: ApiProvider[]): ApiProvider[] {
   return ordered
 }
 
-function resetUsageWindowIfNeeded (): void {
+function resetUsageWindowIfNeeded(): void {
   const nowKey = getUsageWindowKey()
   if (nowKey !== usageWindowKey) {
     usageWindowKey = nowKey
@@ -940,18 +1003,18 @@ function resetUsageWindowIfNeeded (): void {
   }
 }
 
-function getUsageWindowKey (): string {
+function getUsageWindowKey(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function getUsageStats (provider: ApiProvider): ProviderUsageStats {
+function getUsageStats(provider: ApiProvider): ProviderUsageStats {
   if (!providerUsage[provider]) {
     providerUsage[provider] = { count: 0 }
   }
   return providerUsage[provider]!
 }
 
-function getSkipReason (provider: ApiProvider): string | null {
+function getSkipReason(provider: ApiProvider): string | null {
   const stats = getUsageStats(provider)
 
   if (stats.cooldownUntil && Date.now() < stats.cooldownUntil) {
@@ -966,17 +1029,17 @@ function getSkipReason (provider: ApiProvider): string | null {
   return null
 }
 
-function recordProviderSuccess (provider: ApiProvider): void {
+function recordProviderSuccess(provider: ApiProvider): void {
   const stats = getUsageStats(provider)
   stats.count++
 }
 
-function markProviderCooldown (provider: ApiProvider, ms: number): void {
+function markProviderCooldown(provider: ApiProvider, ms: number): void {
   const stats = getUsageStats(provider)
   stats.cooldownUntil = Date.now() + Math.max(ms, 1_000)
 }
 
-function isProviderConfigured (provider: ApiProvider): boolean {
+function isProviderConfigured(provider: ApiProvider): boolean {
   const keyName = getProviderKeyEnvVar(provider)
   const key = process.env[keyName]
   if (!key || key.length < 8) {
@@ -985,7 +1048,7 @@ function isProviderConfigured (provider: ApiProvider): boolean {
   return true
 }
 
-function handleProviderError (config: ApiConfig, error: any): never {
+function handleProviderError(config: ApiConfig, error: any): never {
   const status = error?.status ?? error?.response?.status
   const message = error?.message ?? error?.response?.data?.error ?? error?.response?.data?.error?.message
   const messageLower = (message || '').toLowerCase()
@@ -994,7 +1057,7 @@ function handleProviderError (config: ApiConfig, error: any): never {
 
   const wrap = (err: Error): never => {
     attachProviderMetadata(err, config.provider, status)
-    ;(err as any).rawError = error
+      ; (err as any).rawError = error
     throw err
   }
 
@@ -1034,10 +1097,10 @@ function handleProviderError (config: ApiConfig, error: any): never {
   // Re-throw our custom errors
   const normalizedMessage = (message || '').toUpperCase()
   if (normalizedMessage.includes('TOKEN') ||
-      normalizedMessage.includes('API_KEY') ||
-      normalizedMessage.includes('EMPTY RESPONSE') ||
-      normalizedMessage.includes('INVALID JSON') ||
-      normalizedMessage.includes('MISSING REQUIRED FIELDS')) {
+    normalizedMessage.includes('API_KEY') ||
+    normalizedMessage.includes('EMPTY RESPONSE') ||
+    normalizedMessage.includes('INVALID JSON') ||
+    normalizedMessage.includes('MISSING REQUIRED FIELDS')) {
     return wrap(error instanceof Error ? error : new Error(String(message ?? error)))
   }
 
@@ -1049,7 +1112,7 @@ function handleProviderError (config: ApiConfig, error: any): never {
   return wrap(new Error(`AI service error: ${message || 'Unknown error'}. Please try again.`))
 }
 
-function attachProviderMetadata (err: Error, provider: ApiProvider, status?: number): void {
+function attachProviderMetadata(err: Error, provider: ApiProvider, status?: number): void {
   (err as any).provider = provider
   if (status !== undefined && status !== null) {
     (err as any).status = status

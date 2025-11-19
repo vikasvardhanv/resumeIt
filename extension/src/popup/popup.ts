@@ -1,3 +1,24 @@
+// Helper: Generate project/certification suggestions (stub for now)
+function getProjectSuggestions(keywords: string[]): string[] {
+  // In a real app, this would use LLM or backend. Here, use simple heuristics.
+  const suggestions: string[] = [];
+  if (keywords.some(k => /aws|azure|cloud/i.test(k))) {
+    suggestions.push('Build a cloud deployment project (e.g., deploy an app to AWS/Azure)');
+    suggestions.push('Get AWS Certified Solutions Architect or Azure Fundamentals');
+  }
+  if (keywords.some(k => /python|data|ml|ai|machine learning/i.test(k))) {
+    suggestions.push('Complete a Kaggle ML competition or publish a data science project');
+    suggestions.push('Earn TensorFlow Developer or Data Science certification');
+  }
+  if (keywords.some(k => /react|frontend|javascript/i.test(k))) {
+    suggestions.push('Build a portfolio React app with modern UI/UX');
+    suggestions.push('Get a Frontend Developer certification (e.g., freeCodeCamp)');
+  }
+  if (suggestions.length === 0) {
+    suggestions.push('Complete a relevant online course or certification');
+  }
+  return suggestions;
+}
 import { MessageType, TailorResultMessage } from '../types/messages';
 import { IS_AI_ANALYSIS_ENABLED, getApiUrl, getAiAnalysisUrl, getPremiumRedirectUrl } from '../config';
 
@@ -13,7 +34,7 @@ const CONFIG = {
     AUTH_CACHE_KEY: 'userAuthCache',
     HEALTH_STATUS_KEY: 'lastHealthStatus'
   },
-  
+
   FILE_UPLOAD: {
     MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB
     ALLOWED_TYPES: [
@@ -25,27 +46,27 @@ const CONFIG = {
     ALLOWED_EXTENSIONS: /\.(pdf|doc|docx|txt)$/i,
     TEXT_PREVIEW_LENGTH: 4000
   },
-  
+
   POLLING: {
     JOB_DETECTION_INTERVAL: 2000, // 2 seconds
     HEALTH_CHECK_INTERVAL: 60000, // 1 minute
     HEALTH_CHECK_TIMEOUT: 2000 // 2 seconds
   },
-  
+
   RATE_LIMIT: {
     DEFAULT_COOLDOWN_SECONDS: 15,
     MIN_COOLDOWN_SECONDS: 5,
     MAX_COOLDOWN_SECONDS: 120
   },
-  
+
   INITIALIZATION: {
     FEATURE_DELAY: 100 // ms delay before initializing features after login
   },
-  
+
   BACKGROUND_VERIFICATION: {
     DELAY: 100 // ms delay before background auth verification
   },
-  
+
   MATCH_ANALYSIS: {
     TOP_KEYWORDS_LIMIT: 12,
     MIN_KEYWORD_LENGTH: 3,
@@ -85,8 +106,44 @@ interface ResumeSessionData {
   textPreview?: string;
   uploadedAt: number;
 }
-
 type HealthState = 'checking' | 'ok' | 'warn' | 'error';
+
+type AnalysisPriority = 'critical' | 'high' | 'medium' | 'low';
+
+interface LlmAnalysisMetric {
+  value?: number;
+  count?: number;
+  note?: string;
+  status?: string;
+}
+
+interface LlmAnalysisSnapshot {
+  match_health?: string;
+  summary?: string;
+  alignment_text?: string;
+  strengths?: string;
+  requirement_match?: LlmAnalysisMetric;
+  quantified_bullets?: LlmAnalysisMetric;
+  action_verbs?: LlmAnalysisMetric;
+}
+
+interface LlmAnalysisKeywordGaps {
+  missing?: string[];
+  covered?: string[];
+  missing_note?: string;
+  covered_note?: string;
+}
+
+interface LlmActionPlanItem {
+  priority?: AnalysisPriority;
+  recommendation: string;
+}
+
+interface LlmAnalysisInsights {
+  snapshot?: LlmAnalysisSnapshot;
+  keyword_gaps?: LlmAnalysisKeywordGaps;
+  action_plan?: LlmActionPlanItem[];
+}
 
 type MatchInsights = {
   score: number;
@@ -96,6 +153,8 @@ type MatchInsights = {
   quantifiedCount: number;
   actionVerbHits: number;
   bulletPoints: string[];
+  summary?: string;
+  llmAnalysis?: LlmAnalysisInsights | null;
 };
 
 interface EvidenceContext {
@@ -144,6 +203,10 @@ let noJobDetected: HTMLElement | null = null;
 let jobDetected: HTMLElement | null = null;
 let detectedJobTitle: HTMLElement | null = null;
 let detectedCompany: HTMLElement | null = null;
+let manualJobInput: HTMLElement | null = null;
+let manualJobText: HTMLTextAreaElement | null = null;
+let toggleManualJobBtn: HTMLButtonElement | null = null;
+let isManualJobMode = false;
 
 // ============================================================================
 // INITIALIZATION
@@ -152,10 +215,10 @@ let detectedCompany: HTMLElement | null = null;
 document.addEventListener('DOMContentLoaded', async () => {
   setupAuthListeners();
   await initializeHealthChip();
-  
+
   const authenticated = await checkAuthStatus();
   isAuthenticated = authenticated;
-  
+
   if (isAuthenticated) {
     await showMainView();
   } else {
@@ -168,7 +231,7 @@ function setupAuthListeners(): void {
   if (googleLoginBtn) {
     googleLoginBtn.addEventListener('click', loginWithGoogle);
   }
-  
+
   const logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
   if (logoutBtn) {
     logoutBtn.addEventListener('click', logout);
@@ -184,7 +247,7 @@ async function initializeHealthChip(): Promise<void> {
         stored[CONFIG.STORAGE.HEALTH_STATUS_KEY].text
       );
     }
-  } catch {}
+  } catch { }
 
   const hc = getHealthChip();
   if (hc) {
@@ -220,7 +283,7 @@ async function showMainView(): Promise<void> {
     loadPersistedResume(),
     hydrateLastResult()
   ]);
-  
+
   startJobDetection();
   updateTailorButton();
 }
@@ -240,6 +303,9 @@ function queryDOMElements(): void {
   jobDetected = document.getElementById('jobDetected') as HTMLElement | null;
   detectedJobTitle = document.getElementById('detectedJobTitle') as HTMLElement | null;
   detectedCompany = document.getElementById('detectedCompany') as HTMLElement | null;
+  manualJobInput = document.getElementById('manualJobInput') as HTMLElement | null;
+  manualJobText = document.getElementById('manualJobText') as HTMLTextAreaElement | null;
+  toggleManualJobBtn = document.getElementById('toggleManualJob') as HTMLButtonElement | null;
 }
 
 function updateUserInfo(): void {
@@ -272,7 +338,7 @@ function getHealthChip(): HTMLButtonElement | null {
 async function checkBackendHealth(manual: boolean): Promise<void> {
   const hc = getHealthChip();
   if (!hc) return;
-  
+
   updateHealthChip('checking', manual ? 'Re-checking...' : 'Checking...');
 
   const controller = new AbortController();
@@ -306,16 +372,16 @@ async function checkBackendHealth(manual: boolean): Promise<void> {
 function updateHealthChip(state: HealthState, text: string): void {
   const hc = getHealthChip();
   if (!hc) return;
-  
+
   hc.dataset.state = state;
   const textNode = hc.querySelector('.health-text');
   if (textNode) {
     textNode.textContent = text;
   }
-  
+
   chrome.storage.local.set({
     [CONFIG.STORAGE.HEALTH_STATUS_KEY]: { state, text, ts: Date.now() }
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 // ============================================================================
@@ -325,22 +391,22 @@ function updateHealthChip(state: HealthState, text: string): void {
 async function checkAuthStatus(): Promise<boolean> {
   try {
     const cached = await chrome.storage.local.get(CONFIG.STORAGE.AUTH_CACHE_KEY);
-    
+
     if (cached[CONFIG.STORAGE.AUTH_CACHE_KEY]?.authenticated && cached[CONFIG.STORAGE.AUTH_CACHE_KEY]?.user) {
       userAuth = cached[CONFIG.STORAGE.AUTH_CACHE_KEY];
       isAuthenticated = true;
       setTimeout(() => verifyAuthInBackground(), CONFIG.BACKGROUND_VERIFICATION.DELAY);
       return true;
     }
-    
+
     const response = await fetch(getApiUrl('/api/v1/auth/status'), {
       credentials: 'include',
       cache: 'no-cache'
     });
-    
+
     if (response.ok) {
       const data = await response.json();
-      
+
       if (!data.authenticated) {
         await chrome.storage.local.remove(CONFIG.STORAGE.AUTH_CACHE_KEY);
         isAuthenticated = false;
@@ -374,10 +440,10 @@ async function verifyAuthInBackground(): Promise<void> {
       credentials: 'include',
       cache: 'no-cache'
     });
-    
+
     if (response.ok) {
       const data = await response.json();
-      
+
       if (data.authenticated) {
         userAuth = data;
         isAuthenticated = true;
@@ -414,7 +480,7 @@ async function silentReauthenticate(): Promise<boolean> {
           resolve(false);
           return;
         }
-        
+
         try {
           const resp = await fetch(getApiUrl('/api/v1/auth/google/verify'), {
             method: 'POST',
@@ -424,17 +490,17 @@ async function silentReauthenticate(): Promise<boolean> {
             },
             credentials: 'include'
           });
-          
+
           if (!resp.ok) {
             resolve(false);
             return;
           }
-          
+
           const data = await resp.json();
           userAuth = data;
           isAuthenticated = true;
           await chrome.storage.local.set({ [CONFIG.STORAGE.AUTH_CACHE_KEY]: data });
-          
+
           await showMainView();
           updateUserInfo();
           resolve(true);
@@ -455,14 +521,14 @@ function loginWithGoogle(): void {
     const span = googleLoginBtn.querySelector('span');
     if (span) span.textContent = 'Signing in...';
   }
-  
+
   chrome.identity.getAuthToken({ interactive: true }, async (token) => {
     if (chrome.runtime.lastError) {
       setStatus('Authentication failed. Please try again.');
       resetLoginButton();
       return;
     }
-    
+
     if (token) {
       try {
         const response = await fetch(getApiUrl('/api/v1/auth/google/verify'), {
@@ -473,12 +539,12 @@ function loginWithGoogle(): void {
           },
           credentials: 'include'
         });
-        
+
         if (response.ok) {
           const authData = await response.json();
           userAuth = authData;
           isAuthenticated = true;
-          
+
           await chrome.storage.local.set({ [CONFIG.STORAGE.AUTH_CACHE_KEY]: authData });
           await showMainView();
           setStatus('Successfully signed in!');
@@ -487,10 +553,10 @@ function loginWithGoogle(): void {
           try {
             const errorData = await response.json();
             if (errorData?.error) apiError = errorData.error;
-          } catch {}
+          } catch { }
 
           if (response.status === 401 && token) {
-            chrome.identity.removeCachedAuthToken({ token }, () => {});
+            chrome.identity.removeCachedAuthToken({ token }, () => { });
           }
 
           throw new Error(apiError);
@@ -506,7 +572,7 @@ function loginWithGoogle(): void {
 function handleLoginError(error: Error): void {
   let userMessage = 'Authentication failed. Please try again.';
   const isOffline = !navigator.onLine;
-  
+
   if (isOffline) {
     userMessage = 'You appear offline. Reconnect and retry Google sign-in.';
   } else {
@@ -514,7 +580,7 @@ function handleLoginError(error: Error): void {
     if (msg.includes('invalid') || msg.includes('token')) {
       userMessage = 'Google token invalid or expired. Click to re-authenticate.';
       chrome.identity.getAuthToken({ interactive: false }, (t) => {
-        if (t) chrome.identity.removeCachedAuthToken({ token: t }, () => {});
+        if (t) chrome.identity.removeCachedAuthToken({ token: t }, () => { });
       });
     } else if (msg.includes('backend')) {
       userMessage = 'Backend session could not be established. Try again shortly.';
@@ -524,7 +590,7 @@ function handleLoginError(error: Error): void {
       userMessage = `Auth error: ${error.message}`;
     }
   }
-  
+
   setStatus(userMessage);
 }
 
@@ -543,7 +609,7 @@ async function logout(): Promise<void> {
   try {
     chrome.identity.getAuthToken({ interactive: false }, (token) => {
       if (token) {
-        chrome.identity.removeCachedAuthToken({ token }, () => {});
+        chrome.identity.removeCachedAuthToken({ token }, () => { });
       }
     });
 
@@ -553,7 +619,7 @@ async function logout(): Promise<void> {
       method: 'POST',
       credentials: 'include'
     });
-    
+
     userAuth = null;
     isAuthenticated = false;
     window.location.reload();
@@ -572,20 +638,22 @@ async function logout(): Promise<void> {
 function initializeUpload(): void {
   if (uploadInitialized) return;
   uploadInitialized = true;
-  
+
   if (!uploadArea || !fileInput) return;
+
+
+  // Click on area triggers input only if no file is uploaded
+  uploadArea.addEventListener('click', () => {
+    const fileInfo = document.getElementById('fileInfo');
+    if (fileInput && (!fileInfo || fileInfo.classList.contains('hidden'))) {
+      fileInput.value = '';
+      fileInput.click();
+    }
+  });
 
   fileInput.addEventListener('change', handleFileSelect);
 
-  const uploadBtn = document.getElementById('uploadBtn') as HTMLButtonElement | null;
-  if (uploadBtn) {
-    uploadBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (fileInput) fileInput.click();
-    });
-  }
-
+  // Drag & Drop
   uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
     if (uploadArea) uploadArea.classList.add('dragover');
@@ -597,13 +665,12 @@ function initializeUpload(): void {
 
   uploadArea.addEventListener('drop', handleDrop);
 
-  const dropzone = document.getElementById('uploadDropzone');
-  if (dropzone) {
-    dropzone.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        if (fileInput) fileInput.click();
-      }
+  // Clear button
+  const clearBtn = document.getElementById('clearResumeBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent triggering upload
+      clearResume();
     });
   }
 }
@@ -611,7 +678,7 @@ function initializeUpload(): void {
 function handleDrop(e: DragEvent): void {
   e.preventDefault();
   if (uploadArea) uploadArea.classList.remove('dragover');
-  
+
   const files = e.dataTransfer?.files;
   if (files && files.length > 0) {
     void handleFile(files[0]);
@@ -623,6 +690,8 @@ function handleFileSelect(event: Event): void {
   const file = target.files?.[0];
   if (file) {
     void handleFile(file);
+    // Reset file input so selecting the same file again triggers change
+    target.value = '';
   }
 }
 
@@ -654,22 +723,87 @@ async function handleFile(file: File): Promise<void> {
     resumeFileCache = new File([buffer], record.name, { type: record.mimeType });
     await persistResume(record);
 
-    const statusMessage = isOverwrite 
-      ? `${record.name} uploaded (previous resume replaced)` 
-      : `${record.name} saved`;
-    showResumeStatus(statusMessage, 'success', record.textPreview);
+    updateUploadUI(record);
     updateTailorButton();
   } catch (error) {
     showResumeStatus('Error processing file', 'error');
-  } finally {
-    if (fileInput) fileInput.value = '';
   }
+  if (fileInput) fileInput.value = '';
+}
+
+function updateUploadUI(record: ResumeSessionData | null): void {
+  const placeholder = document.getElementById('uploadPlaceholder');
+  const fileInfo = document.getElementById('fileInfo');
+  const fileName = document.getElementById('fileName');
+  const resumeStatus = document.getElementById('resumeStatus');
+  const previewElement = document.getElementById('resumePreview');
+  const uploadHint = document.querySelector('.upload-hint-compact') as HTMLElement;
+
+  if (record) {
+    if (placeholder) placeholder.classList.add('hidden');
+    if (fileInfo) fileInfo.classList.remove('hidden');
+    if (fileName) fileName.textContent = record.name;
+
+    if (resumeStatus) {
+      // Clear any existing content first to prevent duplication
+      resumeStatus.textContent = '';
+
+      // Only show status if it's a new upload or explicit update
+      // We don't need to show it on initial load
+      if (resumeStatus.textContent === '') {
+        const statusMessage = `${record.name} ready`;
+        resumeStatus.textContent = statusMessage;
+        resumeStatus.className = `resume-status success`;
+        resumeStatus.classList.remove('hidden');
+
+        setTimeout(() => {
+          resumeStatus.classList.add('hidden');
+        }, 3000);
+      }
+    }
+
+    if (uploadHint) uploadHint.style.display = 'none';
+
+    if (previewElement) {
+      if (record.textPreview && record.textPreview.length > 0) {
+        previewElement.textContent = record.textPreview.slice(0, CONFIG.FILE_UPLOAD.TEXT_PREVIEW_LENGTH);
+        previewElement.classList.remove('hidden');
+      } else {
+        previewElement.textContent = '';
+        previewElement.classList.add('hidden');
+      }
+    }
+  } else {
+    if (placeholder) placeholder.classList.remove('hidden');
+    if (fileInfo) fileInfo.classList.add('hidden');
+    if (fileName) fileName.textContent = '';
+
+    if (resumeStatus) {
+      resumeStatus.textContent = '';
+      resumeStatus.classList.add('hidden');
+    }
+
+    if (uploadHint) uploadHint.style.display = 'block';
+
+    if (previewElement) {
+      previewElement.textContent = '';
+      previewElement.classList.add('hidden');
+    }
+  }
+}
+
+function clearResume(): void {
+  currentResume = null;
+  resumeFileCache = null;
+  resumeStorage.remove(CONFIG.STORAGE.RESUME_SESSION_KEY);
+  updateUploadUI(null);
+  updateTailorButton();
 }
 
 function validateFile(file: File): boolean {
   const hasValidExtension = CONFIG.FILE_UPLOAD.ALLOWED_EXTENSIONS.test(file.name);
 
-  if (!CONFIG.FILE_UPLOAD.ALLOWED_TYPES.includes(file.type) && !hasValidExtension) {
+  if (!CONFIG.FILE_UPLOAD.ALLOWED_TYPES.includes(file.type as any) && !hasValidExtension) {
     showResumeStatus('Invalid file format. Please upload a PDF, DOC, DOCX, or TXT file.', 'error');
     return false;
   }
@@ -692,7 +826,7 @@ async function persistResume(record: ResumeSessionData): Promise<void> {
 
 function showResumeStatus(message: string, type: 'success' | 'error', preview?: string): void {
   if (!resumeStatus) return;
-  
+
   resumeStatus.textContent = message;
   resumeStatus.className = `resume-status ${type}`;
   resumeStatus.classList.remove('hidden');
@@ -725,7 +859,7 @@ function showResumeStatus(message: string, type: 'success' | 'error', preview?: 
 
 function startJobDetection(): void {
   if (jobDetectionIntervalId !== null) return;
-  
+
   checkForJobOnCurrentTab();
   jobDetectionIntervalId = window.setInterval(checkForJobOnCurrentTab, CONFIG.POLLING.JOB_DETECTION_INTERVAL);
 }
@@ -735,12 +869,35 @@ async function checkForJobOnCurrentTab(): Promise<void> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
 
-    chrome.tabs.sendMessage(tab.id, { type: MessageType.GetJob }, (response) => {
+    chrome.tabs.sendMessage(tab.id, { type: MessageType.GetJob }, async (response) => {
       if (chrome.runtime.lastError) {
-        updateJobDetectionUI(null);
+        // Content script not loaded, try to inject it and retry
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id! },
+            files: ['contentScript.js']
+          });
+          // Wait a bit for content script to initialize
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tab.id!, { type: MessageType.GetJob }, (retryResponse) => {
+              if (chrome.runtime.lastError) {
+                updateJobDetectionUI(null);
+                return;
+              }
+              if (retryResponse?.job) {
+                currentJob = retryResponse.job;
+                updateJobDetectionUI(retryResponse.job);
+              } else {
+                currentJob = null;
+                updateJobDetectionUI(null);
+              }
+            });
+          }, 500);
+        } catch (err) {
+          updateJobDetectionUI(null);
+        }
         return;
       }
-      
       if (response?.job) {
         currentJob = response.job;
         updateJobDetectionUI(response.job);
@@ -755,23 +912,42 @@ async function checkForJobOnCurrentTab(): Promise<void> {
 }
 
 function updateJobDetectionUI(job: any): void {
+  console.log('🔄 updateJobDetectionUI called with:', job ? { title: job.title, company: job.company } : 'null');
+
   if (!noJobDetected || !jobDetected || !detectedJobTitle || !detectedCompany || !jobDetection) {
+    console.error('❌ Job detection UI elements not found:', {
+      noJobDetected: !!noJobDetected,
+      jobDetected: !!jobDetected,
+      detectedJobTitle: !!detectedJobTitle,
+      detectedCompany: !!detectedCompany,
+      jobDetection: !!jobDetection
+    });
     return;
   }
 
   const debugInfo = document.getElementById('debugInfo') as HTMLElement;
 
-  if (job && job.title) {
+  // Filter out invalid job titles (search results, etc.)
+  const isValidJob = job && job.title &&
+    !job.title.toLowerCase().includes('jobs in') &&
+    !job.title.toLowerCase().includes('job search') &&
+    !job.title.match(/^\d+[,\d]*\+?\s+.*jobs/i) && // "54,000+ jobs"
+    job.title.length < 200;
+
+  if (isValidJob) {
+    console.log('✅ Showing detected job:', job.title);
     noJobDetected.style.display = 'none';
+    noJobDetected.classList.add('hidden');
     jobDetected.style.display = 'block';
+    jobDetected.classList.remove('hidden');
     detectedJobTitle.textContent = job.title;
-    
+
     // Only show company if it's valid and not a placeholder
-    const hasValidCompany = job.company && 
-      job.company !== 'Company Name Not Found' && 
-      job.company !== 'Company' && 
+    const hasValidCompany = job.company &&
+      job.company !== 'Company Name Not Found' &&
+      job.company !== 'Company' &&
       job.company.length > 0;
-    
+
     if (hasValidCompany) {
       detectedCompany.textContent = ` at ${job.company}`;
       detectedCompany.style.display = 'inline';
@@ -779,15 +955,18 @@ function updateJobDetectionUI(job: any): void {
       detectedCompany.textContent = '';
       detectedCompany.style.display = 'none';
     }
-    
+
     jobDetection.classList.add('active');
 
     if (debugInfo) {
       debugInfo.textContent = `Domain: ${job.source} | Desc: ${job.description?.length || 0} chars`;
     }
   } else {
+    console.log('ℹ️ No valid job detected, showing no-job state');
     noJobDetected.style.display = 'block';
+    noJobDetected.classList.remove('hidden');
     jobDetected.style.display = 'none';
+    jobDetected.classList.add('hidden');
     jobDetection.classList.remove('active');
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -809,14 +988,15 @@ function updateJobDetectionUI(job: any): void {
 function initializeButtons(): void {
   if (buttonsInitialized) return;
   buttonsInitialized = true;
-  
+
   if (tailorBtn) tailorBtn.addEventListener('click', handleTailorJob);
   if (downloadBtn) downloadBtn.addEventListener('click', handleDownload);
   if (copyBtn) copyBtn.addEventListener('click', handleCopy);
+  const clearBtn = document.getElementById('clearResultsBtn') as HTMLButtonElement | null;
+  if (clearBtn) clearBtn.addEventListener('click', clearResults);
 
-  const refreshBtn = document.getElementById('refreshResultsBtn') as HTMLButtonElement | null;
-  if (refreshBtn) refreshBtn.addEventListener('click', clearResults);
-  
+  // Remove any old refreshResultsBtn handler (no longer used)
+
   const refreshPageBtn = document.getElementById('refreshBtn') as HTMLButtonElement | null;
   if (refreshPageBtn) {
     refreshPageBtn.addEventListener('click', async () => {
@@ -826,6 +1006,46 @@ function initializeButtons(): void {
         window.close();
       }
     });
+  }
+
+  const refreshJobDetectionBtn = document.getElementById('refreshJobDetectionBtn') as HTMLButtonElement | null;
+  if (refreshJobDetectionBtn) {
+    refreshJobDetectionBtn.addEventListener('click', async () => {
+      // Add spin animation
+      const icon = refreshJobDetectionBtn.querySelector('svg');
+      if (icon) {
+        icon.style.animation = 'spin 1s linear infinite';
+      }
+
+      // Reload the page to force fresh detection
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab.id) {
+        chrome.tabs.reload(tab.id);
+        window.close(); // Close popup so user sees the reload
+      }
+    });
+  }
+
+  if (toggleManualJobBtn) {
+    toggleManualJobBtn.addEventListener('click', () => {
+      isManualJobMode = !isManualJobMode;
+      if (manualJobInput) {
+        if (isManualJobMode) {
+          manualJobInput.classList.remove('hidden');
+          toggleManualJobBtn!.textContent = 'Use Detected Job';
+          if (jobDetection) jobDetection.classList.add('hidden');
+        } else {
+          manualJobInput.classList.add('hidden');
+          toggleManualJobBtn!.textContent = 'Paste Manually';
+          if (jobDetection) jobDetection.classList.remove('hidden');
+        }
+        updateTailorButton();
+      }
+    });
+  }
+
+  if (manualJobText) {
+    manualJobText.addEventListener('input', updateTailorButton);
   }
 }
 
@@ -839,13 +1059,7 @@ async function loadPersistedResume(): Promise<void> {
     if (stored[CONFIG.STORAGE.RESUME_SESSION_KEY]) {
       currentResume = stored[CONFIG.STORAGE.RESUME_SESSION_KEY] as ResumeSessionData;
       resumeFileCache = null;
-      showResumeStatus(`${currentResume.name} loaded`, 'success', currentResume.textPreview);
-      
-      // Hide upload hint since resume is already loaded
-      const uploadHint = document.querySelector('.upload-hint-compact') as HTMLElement;
-      if (uploadHint) {
-        uploadHint.style.display = 'none';
-      }
+      updateUploadUI(currentResume);
     }
   } catch (error) {
     // Silent fail
@@ -887,14 +1101,17 @@ async function hydrateLastResult(): Promise<void> {
 
 function updateTailorButton(): void {
   if (!tailorBtn) return;
-  
-  const tailorSection = document.getElementById('tailorSection') as HTMLElement | null;
-  if (tailorSection) {
-    tailorSection.classList.remove('hidden');
+
+  const hasResume = !!currentResume;
+  let hasJob = false;
+
+  if (isManualJobMode) {
+    hasJob = !!(manualJobText && manualJobText.value.trim().length > 10);
+  } else {
+    hasJob = !!(currentJob && currentJob.title);
   }
-  
-  const canTailor = !!(currentResume && currentJob && currentJob.title);
-  tailorBtn.disabled = !canTailor;
+
+  tailorBtn.disabled = !(hasResume && hasJob);
 }
 
 function handleTailorJob(): void {
@@ -903,8 +1120,25 @@ function handleTailorJob(): void {
     return;
   }
 
-  if (!currentJob || !currentJob.title) {
-    setStatus('No job detected. Navigate to a job posting first.');
+  // Construct job object if manual
+  if (isManualJobMode) {
+    const text = manualJobText?.value.trim() || '';
+    if (text.length < 10) {
+      setStatus('Please enter a valid job description');
+      return;
+    }
+    // Simple parsing or just pass as description
+    currentJob = {
+      title: 'Manual Job Entry',
+      company: 'Unknown Company',
+      description: text,
+      source: 'manual',
+      requirements: []
+    };
+  }
+
+  if (!currentJob || (!currentJob.title && !currentJob.description)) {
+    setStatus('No job detected. Navigate to a job posting or paste manually.');
     return;
   }
 
@@ -980,7 +1214,7 @@ async function tailorResume(): Promise<void> {
     }
 
     const result = await response.json().catch(() => ({ success: false, error: 'Invalid JSON response' }));
-    
+
     console.log('✅ Response received:', {
       success: result.success,
       matchScore: result.match_score,
@@ -989,7 +1223,7 @@ async function tailorResume(): Promise<void> {
       skillsCount: result.tailored?.key_skills?.length || 0,
       projectsCount: result.projects?.length || 0
     });
-    
+
     if (result.tailored?.experience_bullets) {
       console.log('📝 Resume Bullets Received:', result.tailored.experience_bullets.length, 'bullets');
       result.tailored.experience_bullets.forEach((bullet: string, index: number) => {
@@ -998,7 +1232,7 @@ async function tailorResume(): Promise<void> {
     } else {
       console.warn('⚠️ No experience_bullets in response!');
     }
-    
+
     if (!result.success) throw new Error(result.detail || result.error || 'Tailoring failed');
 
     console.log('=== TAILORING REQUEST END ===');
@@ -1015,17 +1249,33 @@ async function tailorResume(): Promise<void> {
       [CONFIG.STORAGE.LAST_RESULT_KEY]: result,
       lastTailoredTime: Date.now()
     });
-  } catch (error) {
-    console.error('❌ Tailoring error:', error);
-    setStatus(`Error: ${(error as Error).message}`);
-    if (tailorBtn) setButtonLoading(tailorBtn, false);
+  } catch (error: any) {
+    console.error('Tailoring failed:', error);
+
+    let errorMessage = 'Failed to tailor resume. Please try again.';
+
+    // Handle specific error cases
+    if (error.message?.includes('rate limit')) {
+      errorMessage = 'High demand. Retrying with backup provider...';
+      // The backend should handle fallback, but if it bubbles up:
+      errorMessage = 'Service busy. Please try again in a moment.';
+    } else if (error.message?.includes('quota')) {
+      errorMessage = 'Usage limit reached. Please upgrade.';
+    }
+
+    showResumeStatus(errorMessage, 'error');
+  } finally {
+    if (tailorBtn) {
+      tailorBtn.disabled = false;
+      tailorBtn.innerHTML = 'Tailor Resume';
+    }
   }
 }
 
 async function handleRateLimitResponse(response: Response): Promise<void> {
   let errorMessage = 'Rate limit exceeded. Please wait before trying again.';
   let upgradeUrl: string | null = null;
-  
+
   try {
     const errorData = await response.json();
     if (errorData.message) {
@@ -1033,21 +1283,21 @@ async function handleRateLimitResponse(response: Response): Promise<void> {
     } else if (errorData.error) {
       errorMessage = errorData.error;
     }
-    
+
     if (errorData.upgradeUrl) {
       upgradeUrl = errorData.upgradeUrl;
     }
   } catch (e) {
     // Use default message
   }
-  
+
   if (errorMessage.toLowerCase().includes('monthly') || errorMessage.toLowerCase().includes('limit reached')) {
     setStatus(errorMessage);
     if (tailorBtn) {
       setButtonLoading(tailorBtn, false);
       tailorBtn.disabled = true;
     }
-    
+
     if (upgradeUrl) {
       const statusEl = document.getElementById('statusMessage');
       if (statusEl) {
@@ -1061,10 +1311,10 @@ async function handleRateLimitResponse(response: Response): Promise<void> {
     }
     return;
   }
-  
+
   const retryAfter = response.headers.get('Retry-After');
-  let seconds = CONFIG.RATE_LIMIT.DEFAULT_COOLDOWN_SECONDS;
-  
+  let seconds: number = CONFIG.RATE_LIMIT.DEFAULT_COOLDOWN_SECONDS;
+
   if (retryAfter) {
     const numeric = parseInt(retryAfter, 10);
     if (!Number.isNaN(numeric)) {
@@ -1083,23 +1333,23 @@ async function handleRateLimitResponse(response: Response): Promise<void> {
       }
     }
   }
-  
+
   startRateLimitCooldown(seconds);
 }
 
 function startRateLimitCooldown(seconds: number): void {
   if (!tailorBtn) return;
-  
+
   if (rateLimitTimer) {
     window.clearInterval(rateLimitTimer);
     rateLimitTimer = null;
   }
-  
+
   let remaining = seconds;
   tailorBtn.disabled = true;
   setButtonLoading(tailorBtn, false);
   setStatus(`Rate limit hit. Please wait ${remaining}s before retrying.`);
-  
+
   rateLimitTimer = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
@@ -1118,306 +1368,391 @@ function startRateLimitCooldown(seconds: number): void {
 // ============================================================================
 
 function showResults(data: any): void {
-  console.log('🎨 Displaying results:', {
-    success: data.success,
-    bulletCount: data.tailored?.experience_bullets?.length || 0,
-    displayingBullets: Math.min(8, data.tailored?.experience_bullets?.length || 0),
-    hasResumeFullText: !!data.resume?.full_text,
-    resumeFullTextLength: data.resume?.full_text?.length || 0,
-    hasCurrentResume: !!currentResume,
-    currentResumePreviewLength: currentResume?.textPreview?.length || 0
-  });
-
+  console.log('📊 showResults called with data:', data);
   lastTailoredResult = data;
-  bulletsDisplayState = 8; // Reset bullet display state
+  bulletsDisplayState = 8;
 
   if (resultsSection) {
     resultsSection.classList.remove('hidden');
-    resultsSection.style.display = 'block';
+    resultsSection.scrollIntoView({ behavior: 'smooth' });
   }
 
-  const summary = escapeHtml(data.tailored?.professional_summary || 'Not available');
-  const currentJobTitle = escapeHtml(currentJob?.title || 'Position');
-  const currentCompany = escapeHtml(currentJob?.company || 'Company');
+  // Match Score Ring
+  const matchScoreRing = document.getElementById('matchScoreRing');
+  if (matchScoreRing) {
+    const score = data.match_score || 0;
+    matchScoreRing.textContent = `${score}%`;
 
-  // Calculate match insights - function handles its own validation
-  const matchInsights = calculateMatchInsights(currentJob, data, currentResume);
+    // Color coding
+    matchScoreRing.className = 'match-score-ring'; // Reset
+    if (score >= 80) matchScoreRing.classList.add('score-high');
+    else if (score >= 60) matchScoreRing.classList.add('score-medium');
+    else matchScoreRing.classList.add('score-low');
+  }
 
-  const matchScore = typeof matchInsights?.score === 'number'
-    ? matchInsights.score
-    : (typeof data.match_score === 'number' ? Math.round(Math.max(0, Math.min(100, data.match_score))) : 'N/A');
+  // Populate Bullets Tab
+  const bulletsList = document.getElementById('optimizedBulletsList');
+  const bullets = data.tailored?.experience_bullets || [];
+  if (bulletsList) {
+    const resultSection = bulletsList.parentElement as HTMLElement | null;
+    bulletsList.innerHTML = '';
 
-  // Build match analysis block with proper validation feedback
-  let matchAnalysisBlock = '';
-  if (matchInsights) {
-    matchAnalysisBlock = buildMatchAnalysisHTML(matchInsights);
-  } else {
-    // Determine what's missing for better user feedback
-    const hasResumeText = !!(data.resume?.full_text || currentResume?.textPreview);
-    const hasJobData = !!(currentJob?.description || currentJob?.title);
+    const initialCount = Math.min(bullets.length, 8);
+    bulletsDisplayState = initialCount;
 
-    let feedbackMessage = 'Upload a resume and open a job description to unlock detailed AI Match Analysis.';
-    if (!hasResumeText && hasJobData) {
-      feedbackMessage = 'Upload your resume to unlock detailed AI Match Analysis with keyword matching, quantified metrics scoring, and ATS recommendations.';
-    } else if (hasResumeText && !hasJobData) {
-      feedbackMessage = 'Open a job description page to unlock detailed AI Match Analysis comparing your resume to job requirements.';
+    bullets.slice(0, initialCount).forEach((bullet: string, index: number) => {
+      const li = document.createElement('li');
+      li.className = 'bullet-item';
+      li.textContent = bullet;
+      li.addEventListener('click', () => {
+        li.classList.toggle('selected');
+      });
+      bulletsList.appendChild(li);
+    });
+
+    if (resultSection) {
+      const staleShowMore = resultSection.querySelector('#showMoreBulletsContainer');
+      if (staleShowMore) staleShowMore.remove();
+      const staleCta = resultSection.querySelector('.upgrade-pro-cta');
+      if (staleCta) staleCta.remove();
     }
 
-    matchAnalysisBlock = `<p style="margin: 0; font-size: 13px; line-height: 1.5;">${feedbackMessage}</p>`;
+    if (bullets.length > 8) {
+      const showMoreContainer = document.createElement('div');
+      showMoreContainer.id = 'showMoreBulletsContainer';
+      showMoreContainer.className = 'show-more-container';
+      showMoreContainer.innerHTML = `
+        <button id="showMoreBulletsBtn" class="show-more-btn">
+          Show 2 more
+        </button>
+        <p class="show-more-note">We reveal only the next 2 bullets for free</p>
+      `;
+      resultSection?.appendChild(showMoreContainer);
+
+      const showMoreBtn = document.getElementById('showMoreBulletsBtn');
+      if (showMoreBtn) {
+        showMoreBtn.addEventListener('click', handleShowMoreBullets);
+      }
+    } else if (resultSection) {
+      const ctaDiv = document.createElement('div');
+      ctaDiv.className = 'upgrade-pro-cta';
+      ctaDiv.innerHTML = '<button class="btn-upgrade-pro">Upgrade to Pro for deeper resume critiques</button>';
+      resultSection.appendChild(ctaDiv);
+    }
+
+    console.log(`✅ Showing ${initialCount} of ${bullets.length} bullets`);
   }
 
-  const projects = Array.isArray(data.projects) ? data.projects.filter((p: any) => (p.relevance_score || 0) >= 70).slice(0, 2) : [];
-  const projectMarkup = projects.map((project: any) => buildProjectCardHTML(project)).join('');
-
-  if (!resultsContent) return;
-  
-  const bulletCount = data.tailored?.experience_bullets?.length || 0;
-  const skillsCount = data.tailored?.key_skills?.length || 0;
-
-  resultsContent.innerHTML = `
-    <div style="background: linear-gradient(135deg, #0073b1 0%, #005a8d 100%); color: white; padding: 16px; margin: 0 0 12px 0; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,115,177,0.25);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <div style="flex: 1;">
-          <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: white; line-height: 1.3;">${currentJobTitle}</h3>
-          ${currentCompany && currentCompany !== 'Company' ? `<p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.85);">${currentCompany}</p>` : ''}
-        </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.18); padding: 12px 16px; border-radius: 10px; min-width: 90px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-          <div style="font-size: 32px; font-weight: 700; color: white; line-height: 1;">${typeof matchScore === 'number' ? `${matchScore}%` : 'N/A'}</div>
-          <div style="font-size: 11px; color: rgba(255,255,255,0.95); font-weight: 600; margin-top: 4px;">ATS Match</div>
-        </div>
-      </div>
-
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.25);">
-        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
-          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${bulletCount}</div>
-          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Resume Bullets</div>
-        </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
-          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${skillsCount}</div>
-          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Key Skills</div>
-        </div>
-        <div style="text-align: center; background: rgba(255,255,255,0.12); padding: 8px; border-radius: 8px;">
-          <div style="font-size: 20px; font-weight: 700; line-height: 1;">${projects.length}</div>
-          <div style="font-size: 10px; opacity: 0.9; margin-top: 3px;">Projects</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Professional Summary</h4>
-        <button id="copySummaryBtn" data-text="${summary.replace(/"/g, '&quot;')}" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy</button>
-      </div>
-      <p style="margin: 0; line-height: 1.5; color: #333; font-size: 13px;">${summary}</p>
-    </div>
-
-    <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Core Skills</h4>
-        <span style="background: #e8f5e8; color: #2e7d32; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;">${(data.tailored?.key_skills || []).length} Skills</span>
-      </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-        ${(data.tailored?.key_skills || []).map((skill: string) => `
-          <span style="background: #f0f0f0; color: #333; padding: 5px 9px; border-radius: 14px; font-size: 11px; border: 1px solid #ddd;">
-            ${escapeHtml(skill)}
-          </span>
-        `).join('')}
-      </div>
-    </div>
-
-    <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Ready-to-Use Resume Bullets</h4>
-        <button id="copyAllBulletsBtn" style="background: #0073b1; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
-          Copy All
-        </button>
-      </div>
-      <ul id="resumeBulletsList" style="list-style: none; padding: 0; margin: 0;">
-        ${(data.tailored?.experience_bullets || []).slice(0, 8).map((bullet: string, index: number) => `
-          <li style="background: #f8f9fa; padding: 9px 11px; margin: 5px 0; border-radius: 4px; border-left: 2px solid #ddd;">
-            <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #333;">
-              <span style="color: #0073b1; font-weight: 600; margin-right: 5px;">${index + 1}.</span>${escapeHtml(bullet)}
-            </p>
-          </li>
-        `).join('')}
-      </ul>
-      ${bulletCount > 8 ? `
-        <div id="showMoreBulletsContainer" style="text-align: center; margin-top: 10px;">
-          <button id="showMoreBulletsBtn" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 6px 16px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
-            Show More (${Math.min(2, bulletCount - 8)} more)
-          </button>
-        </div>
-      ` : ''}
-    </div>
-
-    <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h4 style="margin: 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">ATS Keywords</h4>
-        <button id="copyKeywordsBtn" style="background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">Copy All</button>
-      </div>
-      <div style="line-height: 1.6;">
-        ${(data.tailored?.suggested_keywords || []).map((keyword: string) => `<span style="display: inline-block; background: #e3f2fd; color: #0277bd; padding: 4px 8px; border-radius: 12px; font-size: 11px; margin: 2px; border: 1px solid #bbdefb;">${escapeHtml(keyword)}</span>`).join('')}
-      </div>
-    </div>
-
-    ${projects.length ? `
-    <div style="background: #fff; border-left: 3px solid #0073b1; padding: 12px 14px; margin: 0 0 8px 0;">
-      <h4 style="margin: 0 0 8px 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">Relevant Projects</h4>
-      <div style="display:grid;grid-template-columns:1fr;gap:6px;">${projectMarkup}</div>
-    </div>
-    ` : ''}
-
-    <div style="background: linear-gradient(135deg, #0073b1, #005a8d); color: white; padding: 12px 14px; margin: 0 0 8px 0; border-radius: 4px;">
-      <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">AI Match Analysis</h4>
-      ${matchAnalysisBlock}
-    </div>
-
-    <div style="background: #f8f9fa; border: 1px dashed #ccc; padding: 12px 14px; margin: 0 0 8px 0; border-radius: 4px; text-align: center;">
-      <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #333;">Premium Features Available</h4>
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;">
-        <button class="premium-feature-btn" data-feature="ats-analysis" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
-          ATS Deep Scan
-        </button>
-        <button class="premium-feature-btn" data-feature="cover-letter" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
-          Cover Letter
-        </button>
-        <button class="premium-feature-btn" data-feature="salary-insights" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
-          Salary Intel
-        </button>
-        <button class="premium-feature-btn" data-feature="interview-prep" style="background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #333;">
-          Interview Prep
-        </button>
-      </div>
-      <button id="upgradeModalBtn" style="background: #0073b1; color: white; border: none; padding: 9px 18px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 600; margin-top: 6px;">
-        Upgrade to Premium - $9.99/month
-      </button>
-    </div>
-
-    <div style="display: flex; gap: 8px; justify-content: center; margin-top: 10px; padding: 10px 0 4px 0; border-top: 2px solid #e0e0e0;">
-      <button id="copyBtn" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
-        Copy
-      </button>
-      <button id="downloadBtn" style="flex: 1; background: #fff; color: #0073b1; border: 1px solid #0073b1; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
-        Download
-      </button>
-      <button id="refreshResultsBtn" style="flex: 1; background: #fff; color: #dc2626; border: 1px solid #dc2626; padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500;">
-        Clear
-      </button>
-    </div>
-  `;
-
-  // Attach event listeners to dynamically created buttons
-  const copyAllBulletsBtn = document.getElementById('copyAllBulletsBtn');
-  if (copyAllBulletsBtn) {
-    copyAllBulletsBtn.addEventListener('click', copyAllBullets);
-  }
-
-  const showMoreBulletsBtn = document.getElementById('showMoreBulletsBtn');
-  if (showMoreBulletsBtn) {
-    showMoreBulletsBtn.addEventListener('click', handleShowMoreBullets);
-  }
-
-  const copySummaryBtn = document.getElementById('copySummaryBtn');
-  if (copySummaryBtn) {
-    copySummaryBtn.addEventListener('click', () => {
-      const text = copySummaryBtn.getAttribute('data-text') || '';
-      copyToClipboard(text, 'Summary');
+  // Populate Keywords Tab
+  const keywordsList = document.getElementById('keywordsList');
+  const keywords = data.tailored?.suggested_keywords || [];
+  if (keywordsList) {
+    keywordsList.innerHTML = '';
+    // Keywords
+    const kwSection = document.createElement('div');
+    kwSection.className = 'keywords-section';
+    const kwTitle = document.createElement('div');
+    kwTitle.className = 'keywords-title';
+    kwTitle.textContent = 'Top Keywords';
+    kwSection.appendChild(kwTitle);
+    const kwUl = document.createElement('ul');
+    kwUl.className = 'keywords-ul';
+    keywords.forEach((kw: string) => {
+      const li = document.createElement('li');
+      li.className = 'keyword';
+      li.textContent = kw;
+      li.addEventListener('click', () => {
+        navigator.clipboard.writeText(kw);
+        showResumeStatus(`Copied: ${kw}`, 'success');
+      });
+      kwUl.appendChild(li);
     });
+    kwSection.appendChild(kwUl);
+    keywordsList.appendChild(kwSection);
+
+    // Project/Certification Suggestions
+    const projectSuggestions = getProjectSuggestions(keywords);
+    if (projectSuggestions.length > 0) {
+      const projSection = document.createElement('div');
+      projSection.className = 'keywords-section';
+      const projTitle = document.createElement('div');
+      projTitle.className = 'keywords-title';
+      projTitle.textContent = 'Project/Certification Suggestions';
+      projSection.appendChild(projTitle);
+      const projUl = document.createElement('ul');
+      projUl.className = 'keywords-ul';
+      projectSuggestions.forEach((s: string) => {
+        const li = document.createElement('li');
+        li.className = 'keyword-suggestion';
+        li.textContent = s;
+        projUl.appendChild(li);
+      });
+      projSection.appendChild(projUl);
+      keywordsList.appendChild(projSection);
+    }
+
+    // Upgrade to Pro CTA
+    const ctaDiv = document.createElement('div');
+    ctaDiv.className = 'upgrade-pro-cta';
+    ctaDiv.innerHTML = '<button class="btn-upgrade-pro">Upgrade to Pro for more suggestions</button>';
+    keywordsList.appendChild(ctaDiv);
   }
 
-  const copyKeywordsBtn = document.getElementById('copyKeywordsBtn');
-  if (copyKeywordsBtn) {
-    copyKeywordsBtn.addEventListener('click', copyKeywords);
+  // Populate Analysis Tab
+  const analysisContent = document.getElementById('analysisContent');
+  if (analysisContent) {
+    const matchInsights = calculateMatchInsights(currentJob, data, currentResume) || {
+      score: 0,
+      coverage: 0,
+      matchedKeywords: [],
+      missingKeywords: [],
+      bulletPoints: [],
+      summary: '',
+      quantifiedCount: 0,
+      actionVerbHits: 0,
+      llmAnalysis: null
+    };
+
+    analysisContent.innerHTML = buildMatchAnalysisHTML(matchInsights);
+    setupAnalysisTabs();
+    console.log('✅ Populated analysis tab');
   }
 
+  // Setup tab switching
+  setupResultsTabs();
+
+  // Setup button handlers
   const copyBtn = document.getElementById('copyBtn');
   if (copyBtn) {
-    copyBtn.addEventListener('click', handleCopy);
+    copyBtn.onclick = () => {
+      const allBullets = bullets.join('\n\n');
+      navigator.clipboard.writeText(allBullets);
+      showResumeStatus('All bullets copied!', 'success');
+    };
   }
 
   const downloadBtn = document.getElementById('downloadBtn');
   if (downloadBtn) {
-    downloadBtn.addEventListener('click', handleDownload);
+    downloadBtn.onclick = handleDownload;
   }
 
-  const refreshResultsBtn = document.getElementById('refreshResultsBtn');
-  if (refreshResultsBtn) {
-    refreshResultsBtn.addEventListener('click', clearResults);
-  }
+  // Add Upgrade to Pro button handler (all tabs)
+  setTimeout(() => {
+    document.querySelectorAll('.btn-upgrade-pro').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        window.open('https://resumeit.pro/upgrade', '_blank');
+      });
+    });
+  }, 0);
 
-  // Premium feature buttons
-  const premiumFeatureBtns = document.querySelectorAll('.premium-feature-btn');
-  premiumFeatureBtns.forEach(btn => {
+  console.log('✅ Results display complete');
+}
+
+function setupResultsTabs() {
+  // Simple tab switcher if not already present
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      const feature = btn.getAttribute('data-feature');
-      if (feature) showPremiumFeature(feature);
+      // Deactivate all
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.add('hidden'));
+
+      // Activate clicked
+      btn.classList.add('active');
+      const targetId = btn.getAttribute('data-target');
+      const targetPane = document.getElementById(targetId!);
+      if (targetPane) targetPane.classList.remove('hidden');
     });
   });
+}
 
-  const upgradeModalBtn = document.getElementById('upgradeModalBtn');
-  if (upgradeModalBtn) {
-    upgradeModalBtn.addEventListener('click', showUpgradeModal);
-  }
+function setupAnalysisTabs(): void {
+  const pillButtons = document.querySelectorAll<HTMLButtonElement>('.analysis-pill');
+  const panels = document.querySelectorAll<HTMLElement>('.analysis-panel');
 
-  // Project card click handlers
-  const projectCards = document.querySelectorAll('.project-card');
-  projectCards.forEach(card => {
-    card.addEventListener('click', () => {
-      const title = card.getAttribute('data-title') || '';
-      const description = card.getAttribute('data-description') || '';
-      const technologies = card.getAttribute('data-technologies') || '';
-      showProjectDetails(title, description, technologies);
+  if (!pillButtons.length || !panels.length) return;
+
+  pillButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-panel');
+      if (!targetId) return;
+
+      pillButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      panels.forEach(panel => {
+        if (panel.id === targetId) panel.classList.remove('hidden');
+        else panel.classList.add('hidden');
+      });
     });
   });
 }
 
 function buildMatchAnalysisHTML(insights: MatchInsights): string {
-  // Determine priority level based on coverage
-  const coverage = Math.round(insights.coverage * 100);
-  const priorityLabel = coverage < 50 ? '🚨 CRITICAL' : coverage < 70 ? '⚠️ NEEDS WORK' : coverage < 85 ? '✓ GOOD' : '✓✓ STRONG';
+  // If LLM suggestions are present, show them in a modern card layout
+  if (lastTailoredResult?.llm_suggestions) {
+    const llm = lastTailoredResult.llm_suggestions;
+    return `
+      <div class="match-analysis-card">
+        <div class="match-header">
+          <span class="match-title">LLM-Powered Resume Analysis</span>
+          <span class="match-priority" style="background:#2563eb">AI</span>
+        </div>
+        <div class="llm-analysis-content">
+          ${Array.isArray(llm)
+            ? llm.map((s: string, i: number) => `<div class="llm-suggestion"><span class="action-index">${i + 1}.</span> ${s}</div>`).join('')
+            : `<div class="llm-suggestion">${llm}</div>`}
+        </div>
+        <div class="upgrade-pro-cta">
+          <button class="btn-upgrade-pro">Upgrade to Pro for deeper analysis</button>
+        </div>
+      </div>
+    `;
+  }
+
+  const llmAnalysis = insights.llmAnalysis || (lastTailoredResult?.analysis_insights as LlmAnalysisInsights | undefined) || null;
+  const snapshot = llmAnalysis?.snapshot;
+  const keywordGaps = llmAnalysis?.keyword_gaps;
+  const actionPlan = llmAnalysis?.action_plan;
+
+  const coverageSource = typeof snapshot?.requirement_match?.value === 'number'
+    ? snapshot.requirement_match.value
+    : insights.coverage * 100;
+  const coverage = Math.max(0, Math.min(100, Math.round(coverageSource)));
+  const baseScore = typeof coverageSource === 'number' ? coverage : Math.round(insights.coverage * 100);
+  const fallbackLabel = coverage < 50 ? '🚨 CRITICAL' : coverage < 70 ? '⚠️ NEEDS WORK' : coverage < 85 ? '✓ GOOD' : '✓✓ STRONG';
+  const priorityLabel = escapeHtml((snapshot?.match_health || fallbackLabel).trim());
   const priorityColor = coverage < 50 ? '#dc2626' : coverage < 70 ? '#f59e0b' : coverage < 85 ? '#10b981' : '#059669';
 
+  const matchedKeywords = keywordGaps?.covered && keywordGaps.covered.length > 0
+    ? keywordGaps.covered
+    : insights.matchedKeywords || [];
+  const missingKeywords = keywordGaps?.missing && keywordGaps.missing.length > 0
+    ? keywordGaps.missing
+    : insights.missingKeywords || [];
+  const totalRequirements = matchedKeywords.length + missingKeywords.length;
+  const fallbackSummary = totalRequirements > 0
+    ? `Matching ${matchedKeywords.length} of ${totalRequirements} requirements.`
+    : `Match Score: ${baseScore}%`;
+  const summaryText = escapeHtml((snapshot?.summary || insights.summary || fallbackSummary).trim());
+
+  const missingPreview = missingKeywords.slice(0, 3).join(', ');
+  const extraMissing = missingKeywords.length > 3 ? ` +${missingKeywords.length - 3} more` : '';
+  const fallbackCoverageNarrative = totalRequirements > 0
+    ? (missingKeywords.length
+      ? `Gaps spotted in: ${missingPreview}${extraMissing}.`
+      : 'No noticeable keyword gaps - great coverage!')
+    : 'Paste the job description to highlight exact keyword gaps.';
+  const coverageNarrative = escapeHtml((snapshot?.alignment_text || fallbackCoverageNarrative).trim());
+
+  const quantifiedCount = typeof snapshot?.quantified_bullets?.count === 'number'
+    ? snapshot.quantified_bullets.count
+    : insights.quantifiedCount;
+  const quantifiedStatus = escapeHtml((snapshot?.quantified_bullets?.note
+    || (quantifiedCount >= 4 ? 'Impact is clear' : 'Add measurable metrics')).trim());
+
+  const actionVerbCount = typeof snapshot?.action_verbs?.count === 'number'
+    ? snapshot.action_verbs.count
+    : insights.actionVerbHits;
+  const actionVerbStatus = escapeHtml((snapshot?.action_verbs?.note
+    || (actionVerbCount >= 5 ? 'Strong, energetic language' : 'Use more powerful verbs up front')).trim());
+
+  const matchedStrengthCopy = escapeHtml((snapshot?.strengths
+    || (matchedKeywords.length
+      ? `You are already showcasing ${matchedKeywords.slice(0, 3).join(', ')}. Double down on them in your summary.`
+      : 'Once we scan a resume, we\'ll list your standout strengths here.')).trim());
+
+  const missingChipContent = missingKeywords.length
+    ? missingKeywords.slice(0, 6).map(keyword => `<span class="gap-chip">${escapeHtml(keyword)}</span>`).join('')
+    : `<span class="gap-empty">${keywordGaps ? 'No critical keyword gaps reported.' : 'No missing keywords detected.'}</span>`;
+  const matchedChipContent = matchedKeywords.length
+    ? matchedKeywords.slice(0, 6).map(keyword => `<span class="gap-chip positive">${escapeHtml(keyword)}</span>`).join('')
+    : `<span class="gap-empty">${keywordGaps ? 'LLM did not surface standout strengths.' : 'Upload a resume to surface your keyword strengths.'}</span>`;
+
+  const missingNote = escapeHtml((keywordGaps?.missing_note || 'Highlight these in your summary, bullets, or skills section.').trim());
+  const coveredNote = escapeHtml((keywordGaps?.covered_note || 'Keep these front-and-center - they match what the hiring team wants.').trim());
+
+  const llmActionItems = actionPlan && actionPlan.length > 0
+    ? actionPlan.map((item: LlmActionPlanItem, index: number) => {
+      const priority = item.priority ? `<span class="analysis-action-priority ${item.priority}">${escapeHtml(item.priority.toUpperCase())}</span>` : '';
+      return `<li><span class="analysis-action-index">${index + 1}</span><div>${priority}<p>${escapeHtml(item.recommendation)}</p></div></li>`;
+    }).join('')
+    : null;
+  const fallbackActionItems = insights.bulletPoints.length
+    ? insights.bulletPoints.slice(0, 6).map((point: string, index: number) => `<li><span class="analysis-action-index">${index + 1}</span><div><p>${point}</p></div></li>`).join('')
+    : '<li><div>No tailored insights yet. Generate your resume bullets to unlock this view.</div></li>';
+  const actionItems = llmActionItems ?? fallbackActionItems;
+
   return `
-    <div style="margin: 15px 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <p style="margin: 0; font-size: 14px; font-weight: 700; color: white;">
-          Resume vs Job Requirements Analysis
-        </p>
-        <span style="background: ${priorityColor}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">
-          ${priorityLabel}
-        </span>
-      </div>
-      
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0;">
-        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center; border: 2px solid ${coverage < 70 ? 'rgba(220, 38, 38, 0.4)' : 'rgba(255,255,255,0.2)'};">
-          <div style="font-size: 24px; font-weight: 700; color: white;">${coverage}%</div>
-          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Keyword Match</div>
+    <div class="match-analysis-card modern">
+      <div class="analysis-top">
+        <div class="analysis-copy">
+          <p class="analysis-eyebrow">Match health</p>
+          <div class="match-priority" style="background:${priorityColor}">${priorityLabel}</div>
+          <p class="analysis-summary">${summaryText}</p>
+          <p class="analysis-subtext">${coverageNarrative}</p>
         </div>
-        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 24px; font-weight: 700; color: white;">${insights.quantifiedCount}/${Math.max(6, insights.quantifiedCount + 2)}</div>
-          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Quantified Bullets</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 24px; font-weight: 700; color: white;">${insights.actionVerbHits}</div>
-          <div style="font-size: 10px; opacity: 0.95; font-weight: 600;">Action Verbs</div>
+        <div class="analysis-score-ring">
+          <span>${coverage}%</span>
+          <small>alignment</small>
         </div>
       </div>
-      
-      <div style="background: rgba(255,255,255,0.95); border-radius: 10px; padding: 16px; margin-top: 15px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-        <p style="margin: 0 0 14px 0; font-weight: 700; font-size: 14px; color: #1a1a1a; border-bottom: 2px solid #0073b1; padding-bottom: 8px;">
-          📋 Action Items to Improve Your Resume
-        </p>
-        <ul style="margin: 0; padding-left: 0; list-style: none; font-size: 13px; line-height: 1.7; color: #333;">
-          ${insights.bulletPoints.map((point: string, index: number) => {
-            // Highlight critical items (coverage, skills gap)
-            const isCritical = index < 2 && coverage < 70;
-            return `
-            <li style="margin-bottom: 12px; padding: 10px; padding-left: 28px; position: relative; background: ${isCritical ? '#fef2f2' : '#f9fafb'}; border-left: 3px solid ${isCritical ? '#dc2626' : '#0073b1'}; border-radius: 4px;">
-              <span style="position: absolute; left: 10px; top: 12px; font-weight: 700; color: ${isCritical ? '#dc2626' : '#0073b1'};">${index + 1}.</span>
-              <span style="font-weight: ${isCritical ? '600' : '400'}; color: ${isCritical ? '#991b1b' : '#333'};">${point}</span>
-            </li>
-          `}).join('')}
-        </ul>
+      <div class="analysis-subnav">
+        <button class="analysis-pill active" data-panel="analysis-overview">Snapshot</button>
+        <button class="analysis-pill" data-panel="analysis-gaps">Keyword gaps</button>
+        <button class="analysis-pill" data-panel="analysis-actions">Action plan</button>
+      </div>
+      <div class="analysis-panels">
+        <div id="analysis-overview" class="analysis-panel">
+          <div class="analysis-metrics-grid">
+            <div class="analysis-metric-card">
+              <p class="metric-label">Requirement match</p>
+              <p class="metric-value">${coverage}%</p>
+              <span class="metric-chip">${priorityLabel}</span>
+            </div>
+            <div class="analysis-metric-card">
+              <p class="metric-label">Quantified bullets</p>
+              <p class="metric-value">${quantifiedCount}</p>
+              <span class="metric-note">${quantifiedStatus}</span>
+            </div>
+            <div class="analysis-metric-card">
+              <p class="metric-label">Action verbs</p>
+              <p class="metric-value">${actionVerbCount}</p>
+              <span class="metric-note">${actionVerbStatus}</span>
+            </div>
+          </div>
+          <div class="analysis-highlight">
+            <span class="analysis-highlight-label">Strength focus</span>
+            <p>${matchedStrengthCopy}</p>
+          </div>
+        </div>
+        <div id="analysis-gaps" class="analysis-panel hidden">
+          <div class="gap-card critical">
+            <p class="gap-card-title">Missing keywords (${missingKeywords.length})</p>
+            <div class="gap-chip-grid">
+              ${missingChipContent}
+            </div>
+            <p class="gap-card-note">${missingNote}</p>
+          </div>
+          <div class="gap-card positive">
+            <p class="gap-card-title">Covered strengths (${matchedKeywords.length})</p>
+            <div class="gap-chip-grid">
+              ${matchedChipContent}
+            </div>
+            <p class="gap-card-note">${coveredNote}</p>
+          </div>
+        </div>
+        <div id="analysis-actions" class="analysis-panel hidden">
+          <ol class="analysis-action-list">
+            ${actionItems}
+          </ol>
+        </div>
+      </div>
+      <div class="upgrade-pro-cta luxe">
+        <button class="btn-upgrade-pro luxe">Upgrade for ATS radar & unlimited bullets</button>
+        <p class="upgrade-note">Unlock keyword heatmaps, deeper resume diagnostics, and every tailored bullet we generate.</p>
       </div>
     </div>
   `;
@@ -1442,12 +1777,23 @@ async function clearResults(): Promise<void> {
   try {
     await chrome.storage.local.remove(CONFIG.STORAGE.LAST_RESULT_KEY);
     lastTailoredResult = null;
-    
+
+    // Also clear resume and job state
+    currentResume = null;
+    resumeFileCache = null;
+    currentJob = null;
+    // Remove resume from storage
+    resumeStorage.remove(CONFIG.STORAGE.RESUME_SESSION_KEY);
+
     if (resultsSection) resultsSection.classList.add('hidden');
     if (downloadBtn) downloadBtn.disabled = true;
     if (copyBtn) copyBtn.disabled = true;
     if (resultsContent) resultsContent.innerHTML = '';
-    
+
+    // Reset upload and job detection UI
+    updateUploadUI(null);
+    updateJobDetectionUI(null);
+
     setStatus('Results cleared. Ready to tailor for a new job!');
     updateTailorButton();
   } catch (error) {
@@ -1487,7 +1833,7 @@ function copyKeywords(): void {
     setStatus('No keywords to copy');
     return;
   }
-  
+
   const keywords = lastTailoredResult.tailored.suggested_keywords.join(', ');
   navigator.clipboard.writeText(keywords)
     .then(() => setStatus('Keywords copied to clipboard!'))
@@ -1510,26 +1856,11 @@ function copyAllBullets(): void {
 }
 
 function showMoreBullets(): void {
-  if (!lastTailoredResult?.tailored?.experience_bullets) {
-    setStatus('No additional bullets available');
-    return;
-  }
-
-  const totalBullets = lastTailoredResult.tailored.experience_bullets.length;
-  if (totalBullets <= 8) {
-    setStatus('All bullets are already displayed');
-    return;
-  }
-
-  setStatus(`Upgrade to Pro to unlock ${totalBullets - 8} additional resume bullets!`);
-  setTimeout(() => {
-    setStatus('Pro features include: unlimited bullets, advanced ATS analysis, and more.');
-  }, 2500);
+  handleShowMoreBullets();
 }
 
 let bulletsDisplayState = 8; // Track how many bullets are currently shown
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function handleShowMoreBullets(): void {
   if (!lastTailoredResult?.tailored?.experience_bullets) {
     setStatus('No additional bullets available');
@@ -1537,49 +1868,51 @@ function handleShowMoreBullets(): void {
   }
 
   const totalBullets = lastTailoredResult.tailored.experience_bullets.length;
-  const bulletsList = document.getElementById('resumeBulletsList');
+  const bulletsList = document.getElementById('optimizedBulletsList');
   const showMoreContainer = document.getElementById('showMoreBulletsContainer');
 
   if (!bulletsList || !showMoreContainer) return;
 
-  if (bulletsDisplayState === 8 && totalBullets > 8) {
-    // Show 2 more bullets (total 10)
-    const additionalBullets = lastTailoredResult.tailored.experience_bullets.slice(8, 10);
-    additionalBullets.forEach((bullet: string, idx: number) => {
-      const index = 8 + idx;
-      const li = document.createElement('li');
-      li.style.cssText = 'background: #f8f9fa; padding: 9px 11px; margin: 5px 0; border-radius: 4px; border-left: 2px solid #ddd;';
-      li.innerHTML = `
-        <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #333;">
-          <span style="color: #0073b1; font-weight: 600; margin-right: 5px;">${index + 1}.</span>${escapeHtml(bullet)}
-        </p>
-      `;
-      bulletsList.appendChild(li);
-    });
-
-    bulletsDisplayState = 10;
-
-    // Replace button with upgrade link
-    if (totalBullets > 10) {
-      showMoreContainer.innerHTML = `
-        <button id="bulletUpgradeBtn" style="background: linear-gradient(135deg, #0073b1, #005a8d); color: white; border: none; padding: 8px 20px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 6px rgba(0,115,177,0.3);">
-          Upgrade to Premium - $9.99/month
-        </button>
-        <p style="margin: 6px 0 0 0; font-size: 10px; color: #666;">Unlock ${totalBullets - 10} more resume bullets and premium features</p>
-      `;
-
-      // Add event listener to the new upgrade button
-      const bulletUpgradeBtn = document.getElementById('bulletUpgradeBtn');
-      if (bulletUpgradeBtn) {
-        bulletUpgradeBtn.addEventListener('click', () => redirectToPremium('resume-bullets'));
-      }
-    } else {
-      // All bullets shown, remove the button
-      showMoreContainer.remove();
-    }
-
-    setStatus('Showing 2 more bullets');
+  if (bulletsDisplayState >= Math.min(totalBullets, 10)) {
+    setStatus('Upgrade to Pro to unlock the remaining resume bullets');
+    return;
   }
+
+  const additionalBullets = lastTailoredResult.tailored.experience_bullets.slice(
+    bulletsDisplayState,
+    Math.min(totalBullets, bulletsDisplayState + 2)
+  );
+
+  additionalBullets.forEach((bullet: string) => {
+    const li = document.createElement('li');
+    li.className = 'bullet-item';
+    li.textContent = bullet;
+    li.addEventListener('click', () => {
+      li.classList.toggle('selected');
+    });
+    bulletsList.appendChild(li);
+  });
+
+  bulletsDisplayState += additionalBullets.length;
+
+  const remaining = Math.max(totalBullets - bulletsDisplayState, 0);
+  const upgradeWrapper = document.createElement('div');
+  upgradeWrapper.className = 'upgrade-pro-cta luxe';
+  upgradeWrapper.innerHTML = `
+    <button id="bulletUpgradeBtn" class="btn-upgrade-pro luxe">
+      ${remaining > 0 ? `Unlock ${remaining} more bullet${remaining === 1 ? '' : 's'}` : 'Upgrade for unlimited bullets'}
+    </button>
+    <p class="upgrade-note">Premium unlocks unlimited resume bullets, ATS radar, and smart coaching.</p>
+  `;
+
+  const upgradeButton = upgradeWrapper.querySelector<HTMLButtonElement>('#bulletUpgradeBtn');
+  if (upgradeButton) {
+    upgradeButton.addEventListener('click', () => redirectToPremium('resume-bullets'));
+  }
+
+  showMoreContainer.replaceWith(upgradeWrapper);
+
+  setStatus(`Revealed ${additionalBullets.length} more bullet${additionalBullets.length === 1 ? '' : 's'}`);
 }
 
 function downloadPremiumPreview(): void {
@@ -1637,7 +1970,7 @@ Start your 7-day free trial at: ${premiumLink}
   const blob = new Blob([premiumPreview], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const timestamp = new Date().toISOString().split('T')[0];
-  
+
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = `premium-resume-preview-${timestamp}.txt`;
@@ -1750,111 +2083,146 @@ Implementation Tips:
 // MATCH ANALYSIS
 // ============================================================================
 
-function calculateMatchInsights(job: any, resultData: any, resumeData: ResumeSessionData | null): MatchInsights | null {
-  // Try multiple sources for resume text
-  let resumeText = resultData.resume?.full_text || resumeData?.textPreview || '';
-
-  // Fallback: If no full text, construct from tailored content
-  if (!resumeText.trim() && resultData.tailored) {
-    const tailoredParts: string[] = [];
-    if (resultData.tailored.professional_summary) {
-      tailoredParts.push(resultData.tailored.professional_summary);
-    }
-    if (Array.isArray(resultData.tailored.experience_bullets)) {
-      tailoredParts.push(resultData.tailored.experience_bullets.join(' '));
-    }
-    if (Array.isArray(resultData.tailored.key_skills)) {
-      tailoredParts.push(resultData.tailored.key_skills.join(' '));
-    }
-    resumeText = tailoredParts.join(' ');
-  }
-
-  resumeText = resumeText.toLowerCase();
-
-  const jobSegments: string[] = [];
-  if (job?.title) jobSegments.push(job.title);
-  if (job?.company) jobSegments.push(job.company);
-  if (job?.description) jobSegments.push(job.description);
-  if (Array.isArray(job?.requirements)) jobSegments.push(job.requirements.join(' '));
-
-  const jobText = jobSegments.join(' ').toLowerCase();
-
+function calculateMatchInsights(job: any, tailoredResult: any, resume: any): MatchInsights {
   console.log('🔍 Match Analysis Debug:', {
-    hasResumeFullText: !!resultData.resume?.full_text,
-    hasResumePreview: !!resumeData?.textPreview,
-    hasTailoredContent: !!resultData.tailored,
-    finalResumeTextLength: resumeText.length,
-    hasJobText: !!jobText.trim(),
-    jobTextLength: jobText.length,
     jobTitle: job?.title,
-    hasDescription: !!job?.description,
+    hasJobText: !!(job?.description || job?.title),
+    jobTextLength: (job?.description || '').length,
+    hasResumeFullText: !!resume?.textPreview,
+    hasResumePreview: !!resume?.textPreview,
+    hasTailoredContent: !!tailoredResult?.tailored,
+    finalResumeTextLength: (resume?.textPreview || '').length,
     sources: {
-      fromFullText: !!resultData.resume?.full_text,
-      fromPreview: !!resumeData?.textPreview,
-      fromTailored: !resultData.resume?.full_text && !resumeData?.textPreview && !!resultData.tailored
+      fromFullText: !!resume?.textPreview,
+      fromPreview: !!resume?.textPreview,
+      fromTailored: !!tailoredResult?.tailored
     }
   });
 
-  if (!resumeText.trim() || !jobText.trim()) {
-    console.warn('⚠️ Match analysis skipped - missing resume or job text', {
-      hasResume: !!resumeText.trim(),
-      hasJob: !!jobText.trim()
+  const llmAnalysis = (tailoredResult?.analysis_insights ?? null) as LlmAnalysisInsights | null;
+
+  // 1. Gather Text Sources
+  const resumeText = (resume?.textPreview || '').toLowerCase();
+  const tailoredBullets = (tailoredResult?.tailored?.experience_bullets || []).join(' ').toLowerCase();
+  const fullResumeContext = resumeText + ' ' + tailoredBullets;
+
+  // 2. Use job.requirements as the authoritative list of requirements/keywords
+  const requirements: string[] = Array.isArray(job?.requirements) ? job.requirements : [];
+  const fallbackMatched: string[] = [];
+  const fallbackMissing: string[] = [];
+
+  requirements.forEach((req) => {
+    // Check if the requirement (or its main keywords) are present in the resume
+    const reqNorm = req.toLowerCase();
+    // Simple check: does the requirement phrase or its main noun/verb appear?
+    const mainWord = reqNorm.split(' ').find(w => w.length > 3) || reqNorm;
+    if (fullResumeContext.includes(reqNorm) || fullResumeContext.includes(mainWord)) {
+      fallbackMatched.push(req.trim());
+    } else {
+      fallbackMissing.push(req.trim());
+    }
+  });
+
+  const totalRequirements = requirements.length || 1;
+  const fallbackCoverage = fallbackMatched.length / totalRequirements;
+  const fallbackScore = Math.round(fallbackCoverage * 100);
+
+  // 3. Generate actionable suggestions for missing requirements
+  const fallbackActionItems: string[] = [];
+  if (fallbackMissing.length > 0) {
+    fallbackMissing.forEach((req) => {
+      // Suggest adding the requirement and provide a sample bullet
+      fallbackActionItems.push(`Missing requirement: <b>${req}</b>. Add a bullet or skill mentioning this.`);
+      // Simple LLM-style suggestion (could be improved with real LLM):
+      fallbackActionItems.push(`Example: "${generateSampleBullet(req)}"`);
     });
-    return null;
   }
 
-  const keywords = extractTopKeywords(jobText, CONFIG.MATCH_ANALYSIS.TOP_KEYWORDS_LIMIT);
-  if (!keywords.length) return null;
+  if (fallbackScore < 50) {
+    fallbackActionItems.push('Low requirement match. Your resume might be filtered out by ATS. Try incorporating more job-specific requirements.');
+  } else if (fallbackScore < 70) {
+    fallbackActionItems.push('Moderate match. You have a good foundation, but could improve by adding more requirements from the job posting.');
+  } else {
+    fallbackActionItems.push('Great match! Your resume covers most of the key requirements.');
+  }
 
-  const matchedKeywords = keywords.filter(keyword => resumeText.includes(keyword));
-  const missingKeywords = keywords.filter(keyword => !resumeText.includes(keyword));
-  const coverage = matchedKeywords.length / keywords.length;
+  // Check for quantification
+  const fallbackQuantifiedCount = (fullResumeContext.match(/\d+%|\d+\s*years|\$\d+|\d+\s*users|\d+\s*teams/g) || []).length;
+  if (fallbackQuantifiedCount < 3) {
+    fallbackActionItems.push('Lack of quantified impact. Try adding numbers (e.g., "increased sales by 20%", "managed team of 5") to prove your achievements.');
+  }
 
-  const experienceBullets = Array.isArray(resultData.tailored?.experience_bullets)
-    ? resultData.tailored.experience_bullets
-    : [];
-  const quantifiedCount = experienceBullets.filter((bullet: string) => /[\d%$]/.test(bullet)).length;
-  const desiredQuantified = Math.max(
-    CONFIG.MATCH_ANALYSIS.MIN_QUANTIFIED_BULLETS,
-    Math.min(CONFIG.MATCH_ANALYSIS.MAX_QUANTIFIED_BULLETS, experienceBullets.length)
-  );
-  const quantScore = Math.min(1, quantifiedCount / desiredQuantified);
+  const fallbackActionVerbHits = ACTION_VERBS.reduce((count, verb) => {
+    return fullResumeContext.includes(verb) ? count + 1 : count;
+  }, 0);
 
-  const actionVerbHits = ACTION_VERBS.filter(verb => resumeText.includes(verb)).length;
-  const verbScore = Math.min(1, actionVerbHits / CONFIG.MATCH_ANALYSIS.MIN_ACTION_VERBS);
+  const llmCoverageValue = typeof llmAnalysis?.snapshot?.requirement_match?.value === 'number'
+    ? Math.max(0, Math.min(100, llmAnalysis.snapshot.requirement_match.value))
+    : null;
 
-  const aiDemandCount = AI_KEYWORDS.filter(term => jobText.includes(term)).length;
-  const aiCoveredCount = AI_KEYWORDS.filter(term => resumeText.includes(term)).length;
-  const aiCoverage = aiDemandCount ? Math.min(1, aiCoveredCount / aiDemandCount) : 1;
+  const score = typeof llmCoverageValue === 'number'
+    ? llmCoverageValue
+    : (typeof tailoredResult?.match_score === 'number' ? tailoredResult.match_score : fallbackScore);
 
-  const highRiskGap = missingKeywords.length >= Math.ceil(keywords.length * 0.4);
-  const penalty = highRiskGap ? 0.1 : 0;
+  const coverage = typeof llmCoverageValue === 'number'
+    ? llmCoverageValue / 100
+    : fallbackCoverage;
 
-  let rawScore = (0.55 * coverage) + (0.25 * quantScore) + (0.15 * verbScore) + (0.05 * aiCoverage) - penalty;
-  rawScore = Math.max(0, Math.min(1, rawScore));
-  const score = Math.round(rawScore * 100);
+  const matchedKeywords = llmAnalysis?.keyword_gaps?.covered && llmAnalysis.keyword_gaps.covered.length > 0
+    ? llmAnalysis.keyword_gaps.covered
+    : fallbackMatched;
 
-  const bulletPoints = buildEvidenceBullets({
-    coverage,
-    matchedKeywords,
-    missingKeywords,
-    quantifiedCount,
-    actionVerbHits,
-    aiDemandCount,
-    aiCoveredCount,
-    jobTitle: job?.title || '',
-    company: job?.company || ''
-  });
+  const missingKeywords = llmAnalysis?.keyword_gaps?.missing && llmAnalysis.keyword_gaps.missing.length > 0
+    ? llmAnalysis.keyword_gaps.missing
+    : fallbackMissing;
+
+  const bulletPoints = llmAnalysis?.action_plan?.length
+    ? llmAnalysis.action_plan.map((item: LlmActionPlanItem) => item.recommendation)
+    : fallbackActionItems;
+
+  const summary = llmAnalysis?.snapshot?.summary
+    || (typeof llmCoverageValue === 'number'
+      ? `Match Score: ${llmCoverageValue}%`
+      : `Match Score: ${fallbackScore}%`);
+
+  const quantifiedCount = typeof llmAnalysis?.snapshot?.quantified_bullets?.count === 'number'
+    ? llmAnalysis.snapshot.quantified_bullets.count
+    : fallbackQuantifiedCount;
+
+  const actionVerbHits = typeof llmAnalysis?.snapshot?.action_verbs?.count === 'number'
+    ? llmAnalysis.snapshot.action_verbs.count
+    : fallbackActionVerbHits;
 
   return {
     score,
     coverage,
     matchedKeywords,
     missingKeywords,
+    bulletPoints,
+    summary,
     quantifiedCount,
     actionVerbHits,
-    bulletPoints
+    llmAnalysis
   };
+}
+
+// Helper: Generate a sample bullet for a missing requirement
+function generateSampleBullet(requirement: string): string {
+  // Simple template, can be improved with LLM
+  if (/dashboard|presentation/i.test(requirement)) {
+    return `Built dashboards and presentations to support department goals using modern BI tools.`;
+  }
+  if (/collaborat|team/i.test(requirement)) {
+    return `Collaborated with cross-functional teams to achieve project objectives.`;
+  }
+  if (/analy/i.test(requirement)) {
+    return `Analyzed data to identify trends and inform business decisions.`;
+  }
+  if (/report/i.test(requirement)) {
+    return `Generated and presented reports to stakeholders on key metrics.`;
+  }
+  // Default
+  return `Demonstrated experience with: ${requirement}`;
 }
 
 function extractTopKeywords(text: string, limit: number): string[] {
@@ -1926,7 +2294,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       `<strong>✓✓ EXCELLENT Match (${coveragePct}%):</strong> Your resume strongly aligns with ${ctx.jobTitle}. You're well-positioned for this role. Focus on tailoring your cover letter.`
     );
   }
-  
+
   // Missing Keywords - Specific and Actionable
   if (ctx.missingKeywords.length > 0 && ctx.coverage < 0.85) {
     const criticalMissing = ctx.missingKeywords.slice(0, 4);
@@ -1940,7 +2308,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       );
     }
   }
-  
+
   // Priority 2: Quantified Achievements (Crucial for ATS and hiring managers)
   if (ctx.quantifiedCount < 3) {
     recommendations.push(
@@ -1955,7 +2323,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       `<strong>💪 Excellent Impact:</strong> ${ctx.quantifiedCount} quantified achievements clearly demonstrate measurable results. This is a major strength in your application.`
     );
   }
-  
+
   // Priority 3: Action Verbs (Critical for ATS parsing)
   if (ctx.actionVerbHits < 3) {
     recommendations.push(
@@ -1970,7 +2338,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       `<strong>💼 Strong Professional Language:</strong> ${ctx.actionVerbHits} impactful action verbs demonstrate ownership and drive. Your resume conveys clear initiative.`
     );
   }
-  
+
   // Highlight Strengths - Encouraging and Specific
   if (ctx.matchedKeywords.length >= 3) {
     const topMatches = ctx.matchedKeywords.slice(0, 4);
@@ -1978,7 +2346,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       `<strong>✨ Your Competitive Edge:</strong> You have proven experience with <u>${topMatches.join(', ')}</u> - these are core requirements for this role. LEVERAGE THIS: Mention these prominently in your cover letter and interview prep.`
     );
   }
-  
+
   if (ctx.aiDemandCount > 0) {
     const aiCoveragePercent = Math.round((ctx.aiCoveredCount / ctx.aiDemandCount) * 100);
     if (aiCoveragePercent < 40) {
@@ -1995,14 +2363,14 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       );
     }
   }
-  
+
   if (ctx.jobTitle) {
-    const roleLevel = ctx.jobTitle.toLowerCase().includes('senior') || ctx.jobTitle.toLowerCase().includes('lead') 
+    const roleLevel = ctx.jobTitle.toLowerCase().includes('senior') || ctx.jobTitle.toLowerCase().includes('lead')
       ? 'senior-level'
       : ctx.jobTitle.toLowerCase().includes('junior') || ctx.jobTitle.toLowerCase().includes('associate')
-      ? 'entry-level'
-      : 'mid-level';
-    
+        ? 'entry-level'
+        : 'mid-level';
+
     if (roleLevel === 'senior-level' && ctx.actionVerbHits < 6) {
       recommendations.push(
         `<strong>Leadership Emphasis:</strong> For ${ctx.jobTitle}, emphasize team leadership, strategic decisions, and cross-functional collaboration in your bullets.`
@@ -2013,7 +2381,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
       );
     }
   }
-  
+
   if (ctx.company) {
     recommendations.push(
       `<strong>Tailor to ${ctx.company}:</strong> Research their recent projects and priorities. Adjust your summary to mention experience relevant to their current focus areas.`
@@ -2045,9 +2413,9 @@ function setStatus(message: string): void {
 
 function ensureResumeFile(): File | null {
   if (!currentResume) return null;
-  
+
   if (resumeFileCache) return resumeFileCache;
-  
+
   try {
     const blob = base64ToBlob(currentResume.base64, currentResume.mimeType);
     resumeFileCache = new File([blob], currentResume.name, { type: currentResume.mimeType });
@@ -2063,7 +2431,7 @@ function buildResumeText(result: any): string {
   }
 
   const sections = [];
-  
+
   if (result.tailored?.professional_summary) {
     sections.push(`PROFESSIONAL SUMMARY\n${result.tailored.professional_summary}\n`);
   }
@@ -2080,13 +2448,13 @@ function buildResumeText(result: any): string {
 }
 
 function buildEnhancedResumeDocument(result: any): string {
-  const timestamp = new Date().toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  const timestamp = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
   const matchScore = result.match_score || 'N/A';
-  
+
   const header = `
 ╔════════════════════════════════════════════════════════════════════════════════╗
 ║                     AI-TAILORED RESUME PACKAGE                                 ║
@@ -2154,37 +2522,37 @@ Generated by ResumeIt AI • ${timestamp}
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
-  
+
   for (let i = 0; i < bytes.length; i += CONFIG.MATCH_ANALYSIS.CHUNK_SIZE) {
     const chunk = bytes.subarray(i, i + CONFIG.MATCH_ANALYSIS.CHUNK_SIZE);
     binary += String.fromCharCode(...chunk);
   }
-  
+
   return btoa(binary);
 }
 
 function base64ToBlob(base64: string, mimeType: string): Blob {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);
-  
+
   for (let i = 0; i < byteChars.length; i++) {
     byteNumbers[i] = byteChars.charCodeAt(i);
   }
-  
+
   const byteArray = new Uint8Array(byteNumbers);
   return new Blob([byteArray], { type: mimeType });
 }
 
 function generateTextPreview(buffer: ArrayBuffer, mimeType: string): string | undefined {
   if (mimeType !== 'text/plain') return undefined;
-  
+
   const decoder = new TextDecoder('utf-8', { fatal: false });
   return decoder.decode(buffer).slice(0, CONFIG.FILE_UPLOAD.TEXT_PREVIEW_LENGTH);
 }
 
 function resolveMimeType(file: File): string {
   if (file.type) return file.type;
-  
+
   const extension = file.name.split('.').pop()?.toLowerCase();
   switch (extension) {
     case 'pdf':
