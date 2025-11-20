@@ -216,8 +216,8 @@ const makeOpenRouterRequest = async (prompt: string, config: ApiConfig): Promise
     {
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
-        'HTTP-Referer': process.env.YOUR_SITE_URL || 'https://resumeit.app',
-        'X-Title': process.env.YOUR_SITE_NAME || 'ResumeIt',
+        'HTTP-Referer': process.env.YOUR_SITE_URL || 'https://resumecraft.dev',
+        'X-Title': process.env.YOUR_SITE_NAME || 'ResumeCraft',
         'Content-Type': 'application/json'
       }
     }
@@ -411,7 +411,7 @@ export const TailorResponseSchema = z.object({
 
 export type TailorResponse = z.infer<typeof TailorResponseSchema>
 
-// Enhanced prompt for comprehensive resume tailoring
+// Enhanced prompt for comprehensive resume crafting
 const ENHANCED_PROMPT = `You are an elite, senior-level ATS resume strategist and resume-writing expert. Your job is to analyze the job description and user resume, then produce a PERFECT, fully dynamic, hyper-realistic set of resume outputs.
 JOB DESCRIPTION:
 {{job_description}}
@@ -581,7 +581,7 @@ export async function generateTailored(jobDescription: string, resumeText: strin
   }
 
   logger.info({
-    msg: '🚀 [LLM] Starting tailoring request',
+    msg: '🚀 [LLM] Starting resume crafting request',
     providerChain: providers.join(' → '),
     jobDescriptionLength: jobDescription.length,
     resumeLength: resumeText.length
@@ -773,7 +773,7 @@ async function generateWithProvider(provider: ApiProvider, jobDescription: strin
       }
 
       if (!completion) {
-        throw new Error('Unable to generate tailoring after contacting Groq multiple times. Please wait 30 seconds and try again.')
+        throw new Error('Unable to craft this resume after contacting Groq multiple times. Please wait 30 seconds and try again.')
       }
 
       content = completion.choices[0]?.message?.content ?? null
@@ -840,7 +840,7 @@ async function generateWithProvider(provider: ApiProvider, jobDescription: strin
       }
 
       if (!completion) {
-        throw new Error('Unable to generate tailoring after multiple attempts due to upstream rate limiting. Please wait 30 seconds and try again.')
+        throw new Error('Unable to craft this resume after multiple attempts due to upstream rate limiting. Please wait 30 seconds and try again.')
       }
 
       content = completion.choices[0]?.message?.content ?? null

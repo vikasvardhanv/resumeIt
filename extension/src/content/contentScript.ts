@@ -1387,7 +1387,7 @@ function isLikelyJobPage(): boolean {
 // MESSAGE HANDLING & INITIALIZATION
 // ============================================================================
 
-console.log('🚀 ResumeIt Intelligent Content Script Loaded');
+console.log('🚀 ResumeCraft Intelligent Content Script Loaded');
 
 // Check if this is a job page
 if (isLikelyJobPage()) {

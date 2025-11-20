@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Resume Tailor Tailor",
+  "name": "ResumeCraft",
   "version": "0.1.0",
-  "description": "Automatically tailor your resume to job postings and generate project ideas.",
+  "description": "Automatically craft your resume to job postings and generate project ideas.",
   "permissions": [
     "activeTab",
     "storage",
@@ -31,7 +31,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Resume Tailor Tailor"
+    "default_title": "ResumeCraft"
   },
   "options_page": "options.html",
   "background": {

@@ -80,7 +80,7 @@ export async function checkUsageLimit (req: AuthRequest, res: Response, next: Ne
       console.warn(`🚫 [USAGE LIMIT] Monthly limit exceeded for ${user.email}`)
       return res.status(429).json({
         error: 'Monthly limit reached',
-        message: `You've reached your limit of ${monthlyLimit} resume tailorings this month.`,
+        message: `You've reached your limit of ${monthlyLimit} resume crafting requests this month.`,
         detail: `Usage: ${usage.tailorings}/${monthlyLimit} for ${currentMonth}`,
         upgradeUrl: '/upgrade'
       })

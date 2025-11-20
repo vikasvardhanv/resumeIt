@@ -333,11 +333,14 @@ function updateUserInfo(): void {
     const userEmail = document.getElementById('userEmail');
 
     if (userInitials) {
-      const initials = userAuth.user.name
-        ?.split(' ')
-        .map((n: string) => n[0])
-        .join('')
-        .toUpperCase() || 'U';
+      const nameSource = (userAuth.user.name || '').trim();
+      const fallback = userAuth.user.email || 'User';
+      const initials = (nameSource || fallback)
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((segment: string) => segment.charAt(0).toUpperCase())
+        .join('') || 'U';
       userInitials.textContent = initials;
     }
     if (userName) userName.textContent = userAuth.user.name || 'User';
@@ -1094,27 +1097,27 @@ async function hydrateLastResult(): Promise<void> {
       showResults(cachedResult);
       if (downloadBtn) downloadBtn.disabled = false;
       if (copyBtn) copyBtn.disabled = false;
-      setStatus('Loaded your most recent tailored resume.');
+      setStatus('Loaded your most recent crafted resume.');
     } else {
       lastTailoredResult = null;
       if (resultsSection) resultsSection.classList.add('hidden');
       if (downloadBtn) downloadBtn.disabled = true;
       if (copyBtn) copyBtn.disabled = true;
-      setStatus('Ready to tailor your resume!');
+      setStatus('Ready to craft your resume!');
     }
   } catch (error) {
     lastTailoredResult = null;
     if (resultsSection) resultsSection.classList.add('hidden');
     if (downloadBtn) downloadBtn.disabled = true;
     if (copyBtn) copyBtn.disabled = true;
-    setStatus('Ready to tailor your resume!');
+    setStatus('Ready to craft your resume!');
   }
 
   updateTailorButton();
 }
 
 // ============================================================================
-// TAILORING
+// RESUME CRAFTING
 // ============================================================================
 
 function updateTailorButton(): void {
@@ -1129,7 +1132,7 @@ function updateTailorButton(): void {
     hasJob = !!(currentJob && currentJob.title);
   }
 
-  // Free/Paid tailoring limit logic
+  // Free/Paid crafting limit logic
   let overLimit = false;
   let plan = 'free';
   let limit = 100;
@@ -1146,9 +1149,10 @@ function updateTailorButton(): void {
   // Show upgrade CTA if over limit
   const statusBar = document.getElementById('statusMessage');
   if (overLimit && statusBar) {
-    statusBar.innerHTML = `You have reached your free tailoring limit (${limit}/month). <a href="https://resumeit.pro/upgrade" target="_blank" style="color:#0073b1;text-decoration:underline;">Upgrade to Pro</a> for unlimited tailoring.`;
+    const upgradeUrl = getPremiumRedirectUrl('limits');
+    statusBar.innerHTML = `You have reached your free crafting limit (${limit}/month). <a href="${upgradeUrl}" target="_blank" style="color:#0073b1;text-decoration:underline;">Upgrade to Pro</a> for unlimited crafting.`;
   } else if (statusBar) {
-    statusBar.textContent = 'Ready to tailor your resume!';
+    statusBar.textContent = 'Ready to craft your resume!';
   }
 // End updateTailorButton
 }
@@ -1181,7 +1185,7 @@ function handleTailorJob(): void {
     return;
   }
 
-  setStatus('Tailoring resume...');
+  setStatus('Crafting your resume...');
   setButtonLoading(tailorBtn, true);
   tailorBtn.disabled = true;
 
@@ -1189,7 +1193,7 @@ function handleTailorJob(): void {
     if (tailorBtn) {
       setButtonLoading(tailorBtn, false);
       tailorBtn.disabled = false;
-      tailorBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Tailor Resume`;
+      tailorBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Craft my resume`;
     }
   });
 }
@@ -1207,7 +1211,7 @@ async function tailorResume(): Promise<void> {
       throw new Error('Resume data is not available');
     }
 
-    console.log('=== TAILORING REQUEST START ===');
+    console.log('=== RESUME CRAFTING REQUEST START ===');
     console.log('📄 Resume:', {
       name: currentResume.name,
       size: currentResume.size,
@@ -1279,11 +1283,11 @@ async function tailorResume(): Promise<void> {
       console.warn('⚠️ No experience_bullets in response!');
     }
 
-    if (!result.success) throw new Error(result.detail || result.error || 'Tailoring failed');
+    if (!result.success) throw new Error(result.detail || result.error || 'Crafting failed');
 
-    console.log('=== TAILORING REQUEST END ===');
+    console.log('=== RESUME CRAFTING REQUEST END ===');
 
-    setStatus('Resume tailored successfully!');
+    setStatus('Resume crafted successfully!');
     showResults(result);
 
     lastTailoredResult = result;
@@ -1295,9 +1299,9 @@ async function tailorResume(): Promise<void> {
       lastTailoredTime: Date.now()
     });
   } catch (error: any) {
-    console.error('Tailoring failed:', error);
+    console.error('Crafting failed:', error);
 
-    let errorMessage = 'Failed to tailor resume. Please try again.';
+    let errorMessage = 'Failed to craft your resume. Please try again.';
 
     // Handle specific error cases
     if (error.message?.includes('rate limit')) {
@@ -1395,7 +1399,7 @@ function startRateLimitCooldown(seconds: number): void {
     if (remaining <= 0) {
       window.clearInterval(rateLimitTimer!);
       rateLimitTimer = null;
-      setStatus('You can try tailoring again now.');
+      setStatus('You can try crafting again now.');
       updateTailorButton();
     } else {
       setStatus(`Rate limit hit. Please wait ${remaining}s before retrying.`);
@@ -1581,7 +1585,7 @@ function showResults(data: any): void {
   setTimeout(() => {
     document.querySelectorAll('.btn-upgrade-pro').forEach((btn) => {
       btn.addEventListener('click', () => {
-        window.open('https://resumeit.pro/upgrade', '_blank');
+        redirectToPremium('upgrade');
       });
     });
   }, 0);
@@ -1723,7 +1727,7 @@ function buildMatchAnalysisHTML(insights: MatchInsights): string {
     : null;
   const fallbackActionItems = insights.bulletPoints.length
     ? insights.bulletPoints.slice(0, 6).map((point: string, index: number) => `<li><span class="analysis-action-index">${index + 1}</span><div><p>${point}</p></div></li>`).join('')
-    : '<li><div>No tailored insights yet. Generate your resume bullets to unlock this view.</div></li>';
+    : '<li><div>No crafted insights yet. Generate your resume bullets to unlock this view.</div></li>';
   const actionItems = llmActionItems ?? fallbackActionItems;
 
   return `
@@ -1793,7 +1797,7 @@ function buildMatchAnalysisHTML(insights: MatchInsights): string {
       </div>
       <div class="upgrade-pro-cta luxe">
         <button class="btn-upgrade-pro luxe">Upgrade for ATS radar & unlimited bullets</button>
-        <p class="upgrade-note">Unlock keyword heatmaps, deeper resume diagnostics, and every tailored bullet we generate.</p>
+        <p class="upgrade-note">Unlock keyword heatmaps, deeper resume diagnostics, and every crafted bullet we generate.</p>
       </div>
     </div>
   `;
@@ -1835,7 +1839,7 @@ async function clearResults(): Promise<void> {
     updateUploadUI(null);
     updateJobDetectionUI(null);
 
-    setStatus('Results cleared. Ready to tailor for a new job!');
+    setStatus('Results cleared. Ready to craft for a new job!');
     updateTailorButton();
   } catch (error) {
     setStatus('Error clearing results');
@@ -1852,14 +1856,14 @@ function handleDownload(): void {
 
 function handleCopy(): void {
   if (!lastTailoredResult) {
-    setStatus('No tailored resume to copy');
+    setStatus('No crafted resume to copy');
     return;
   }
 
   const resumeText = buildResumeText(lastTailoredResult);
 
   navigator.clipboard.writeText(resumeText)
-    .then(() => setStatus('Tailored resume copied to clipboard!'))
+    .then(() => setStatus('Crafted resume copied to clipboard!'))
     .catch(() => setStatus('Error copying to clipboard'));
 }
 
@@ -1958,7 +1962,7 @@ function handleShowMoreBullets(): void {
 
 function downloadPremiumPreview(): void {
   if (!lastTailoredResult) {
-    setStatus('No tailored resume available');
+    setStatus('No crafted resume available');
     return;
   }
 
@@ -2339,7 +2343,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
     );
   } else {
     recommendations.push(
-      `<strong>✓✓ EXCELLENT Match (${coveragePct}%):</strong> Your resume strongly aligns with ${ctx.jobTitle}. You're well-positioned for this role. Focus on tailoring your cover letter.`
+      `<strong>✓✓ EXCELLENT Match (${coveragePct}%):</strong> Your resume strongly aligns with ${ctx.jobTitle}. You're well-positioned for this role. Focus on crafting your cover letter.`
     );
   }
 
@@ -2432,7 +2436,7 @@ function buildEvidenceBullets(ctx: EvidenceContext): string[] {
 
   if (ctx.company) {
     recommendations.push(
-      `<strong>Tailor to ${ctx.company}:</strong> Research their recent projects and priorities. Adjust your summary to mention experience relevant to their current focus areas.`
+      `<strong>Craft for ${ctx.company}:</strong> Research their recent projects and priorities. Adjust your summary to mention experience relevant to their current focus areas.`
     );
   }
 
@@ -2451,7 +2455,7 @@ function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
   } else {
     button.classList.remove('btn-loading');
     button.disabled = false;
-    button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Tailor Resume`;
+    button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Craft my resume`;
   }
 }
 
@@ -2507,11 +2511,11 @@ function buildEnhancedResumeDocument(result: any): string {
 
   const header = `
 ╔════════════════════════════════════════════════════════════════════════════════╗
-║                     AI-TAILORED RESUME PACKAGE                                 ║
-║                     Generated by ResumeIt AI                                   ║
+║                     AI-CRAFTED RESUME PACKAGE                                  ║
+║                     Generated by ResumeCraft AI                                ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
 
-TAILORING SUMMARY
+CRAFTING SUMMARY
 - Generated: ${timestamp}
 - Target Role: ${currentJob?.title || 'Not specified'}
 - Target Company: ${currentJob?.company || 'Not specified'}
@@ -2563,7 +2567,7 @@ ADDITIONAL TIPS:
 
 Remember: This is your foundation. Customize it to reflect your unique experience!
 
-Generated by ResumeIt AI • ${timestamp}
+Generated by ResumeCraft AI • ${timestamp}
 `;
 
   return header + resumeContent + footer;
@@ -2631,7 +2635,7 @@ function escapeHtml(value: string): string {
 
 chrome.runtime.onMessage.addListener((message: TailorResultMessage) => {
   if (message.type === MessageType.TailorResult) {
-    setStatus('Resume tailored successfully!');
+    setStatus('Resume crafted successfully!');
     if (tailorBtn) setButtonLoading(tailorBtn, false);
     showResults(message.result);
   }

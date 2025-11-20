@@ -90,7 +90,7 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimi
     const job = normalizeJobPayload(jobPayload)
     const jobPrompt = buildJobPrompt(job)
 
-    logger.info({ requestId, userId: req.user?.id, jobTitle: job.title }, '🤖 Calling LLM to generate tailored resume...')
+    logger.info({ requestId, userId: req.user?.id, jobTitle: job.title }, '🤖 Calling LLM to craft a customized resume...')
     const result = await generateTailored(jobPrompt, resumeText)
     const llmMeta = (result as any)._meta || {}
     logger.info({
@@ -162,7 +162,7 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimi
         }
       })
 
-      logger.info({ requestId, userId: user.id, tailoringId }, '💾 Saved tailoring to database')
+      logger.info({ requestId, userId: user.id, tailoringId }, '💾 Saved crafting result to database')
     } catch (dbError) {
       logger.warn({ requestId, userId: user.id, error: dbError }, '⚠️ Database not available, skipping save')
       if (isDevelopment) {
@@ -179,7 +179,7 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimi
       tailoringId,
       matchScore: result.match_score,
       jobTitle: job.title
-    }, '✅ Request completed successfully')
+    }, '✅ Resume crafting request completed successfully')
 
     res.json({
       success: true,
@@ -249,7 +249,7 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimi
     // Generic error
     res.status(500).json({
       success: false,
-      error: 'Tailoring failed',
+      error: 'Crafting failed',
       detail: errorMessage
     })
   }

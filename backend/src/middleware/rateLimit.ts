@@ -80,7 +80,7 @@ export const analyzeJobLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: perUserKeyGenerator,
-  handler: build429Handler('Resume tailoring request limit reached for your account. Please wait a few minutes or upgrade your plan.', 'ANALYZE_JOB')
+  handler: build429Handler('Resume crafting request limit reached for your account. Please wait a few minutes or upgrade your plan.', 'ANALYZE_JOB')
 })
 
 // Add a separate middleware for logging after rate limiter sets headers

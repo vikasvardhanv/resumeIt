@@ -159,7 +159,7 @@ app.use('/api/v1/subscription', subscriptionRouter)
 // Root route
 app.get('/', (req, res) => {
   res.json({
-    name: 'ResumeIt API',
+    name: 'ResumeCraft API',
     version: '1.0.0',
     status: 'running',
     documentation: '/api/docs',

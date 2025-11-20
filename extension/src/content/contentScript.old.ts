@@ -454,7 +454,7 @@ function detectJobPage(): boolean {
 }
 
 // Initialize job detection
-console.log('🚀 ResumeIt Content Script Loaded');
+console.log('🚀 ResumeCraft Content Script Loaded');
 
 // Check if current page is a job posting
 if (detectJobPage()) {

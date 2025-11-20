@@ -112,8 +112,8 @@ userRouter.get('/tailorings', requireAuth, async (req: AuthRequest, res: Respons
       }
     })
   } catch (error) {
-    console.error('Get tailorings error:', error)
-    res.status(500).json({ error: 'Failed to get tailorings' })
+    console.error('Get crafting requests error:', error)
+    res.status(500).json({ error: 'Failed to get crafting requests' })
   }
 })
 
@@ -133,13 +133,13 @@ userRouter.get('/tailorings/:id', requireAuth, async (req: AuthRequest, res: Res
     })
 
     if (!tailoring) {
-      return res.status(404).json({ error: 'Tailoring not found' })
+      return res.status(404).json({ error: 'Crafting session not found' })
     }
 
     res.json(tailoring)
   } catch (error) {
-    console.error('Get tailoring error:', error)
-    res.status(500).json({ error: 'Failed to get tailoring' })
+    console.error('Get crafting session error:', error)
+    res.status(500).json({ error: 'Failed to get crafting session' })
   }
 })
 

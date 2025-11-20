@@ -1,5 +1,5 @@
-# Render Blueprint for ResumeIt
-# This file defines the infrastructure needed to deploy ResumeIt on Render
+# Render Blueprint for ResumeCraft
+# This file defines the infrastructure needed to deploy ResumeCraft on Render
 # Docs: https://render.com/docs/blueprint-spec
 
 services:

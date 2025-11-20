@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
           break;
         }
         case MessageType.TailorRequest: {
-          sendResponse({ ok: false, error: 'Tailoring requests must be initiated from the popup UI.' });
+          sendResponse({ ok: false, error: 'Crafting requests must be initiated from the popup UI.' });
           break;
         }
         default:
