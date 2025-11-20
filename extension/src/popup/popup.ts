@@ -1501,7 +1501,8 @@ function showResults(data: any): void {
   // Populate Analysis Tab
   const analysisContent = document.getElementById('analysisContent');
   if (analysisContent) {
-    const matchInsights = calculateMatchInsights(currentJob, data, currentResume) || {
+    const jobForAnalysis = data.job || currentJob;
+    const matchInsights = calculateMatchInsights(jobForAnalysis, data, currentResume) || {
       score: 0,
       coverage: 0,
       matchedKeywords: [],
@@ -2084,16 +2085,21 @@ Implementation Tips:
 // ============================================================================
 
 function calculateMatchInsights(job: any, tailoredResult: any, resume: any): MatchInsights {
+  const jobData = job || tailoredResult?.job || currentJob;
+  const resumeTextSource = resume?.textPreview && resume.textPreview.trim().length > 0
+    ? resume.textPreview
+    : (tailoredResult?.resume?.full_text || '');
+
   console.log('🔍 Match Analysis Debug:', {
-    jobTitle: job?.title,
-    hasJobText: !!(job?.description || job?.title),
-    jobTextLength: (job?.description || '').length,
-    hasResumeFullText: !!resume?.textPreview,
+    jobTitle: jobData?.title,
+    hasJobText: !!(jobData?.description || jobData?.title),
+    jobTextLength: (jobData?.description || '').length,
+    hasResumeFullText: !!resumeTextSource,
     hasResumePreview: !!resume?.textPreview,
     hasTailoredContent: !!tailoredResult?.tailored,
-    finalResumeTextLength: (resume?.textPreview || '').length,
+    finalResumeTextLength: resumeTextSource.length,
     sources: {
-      fromFullText: !!resume?.textPreview,
+      fromFullText: !!resumeTextSource,
       fromPreview: !!resume?.textPreview,
       fromTailored: !!tailoredResult?.tailored
     }
@@ -2102,12 +2108,12 @@ function calculateMatchInsights(job: any, tailoredResult: any, resume: any): Mat
   const llmAnalysis = (tailoredResult?.analysis_insights ?? null) as LlmAnalysisInsights | null;
 
   // 1. Gather Text Sources
-  const resumeText = (resume?.textPreview || '').toLowerCase();
+  const resumeText = (resumeTextSource || '').toLowerCase();
   const tailoredBullets = (tailoredResult?.tailored?.experience_bullets || []).join(' ').toLowerCase();
   const fullResumeContext = resumeText + ' ' + tailoredBullets;
 
   // 2. Use job.requirements as the authoritative list of requirements/keywords
-  const requirements: string[] = Array.isArray(job?.requirements) ? job.requirements : [];
+  const requirements: string[] = Array.isArray(jobData?.requirements) ? jobData.requirements : [];
   const fallbackMatched: string[] = [];
   const fallbackMissing: string[] = [];
 
@@ -2157,16 +2163,20 @@ function calculateMatchInsights(job: any, tailoredResult: any, resume: any): Mat
   }, 0);
 
   const llmCoverageValue = typeof llmAnalysis?.snapshot?.requirement_match?.value === 'number'
-    ? Math.max(0, Math.min(100, llmAnalysis.snapshot.requirement_match.value))
+    ? Math.max(0, Math.min(100, Math.round(llmAnalysis.snapshot.requirement_match.value)))
     : null;
 
-  const score = typeof llmCoverageValue === 'number'
-    ? llmCoverageValue
-    : (typeof tailoredResult?.match_score === 'number' ? tailoredResult.match_score : fallbackScore);
+  const jobMatchScore = typeof tailoredResult?.match_score === 'number'
+    ? Math.max(0, Math.min(100, Math.round(tailoredResult.match_score)))
+    : fallbackScore;
 
-  const coverage = typeof llmCoverageValue === 'number'
-    ? llmCoverageValue / 100
-    : fallbackCoverage;
+  const coveragePercent = llmCoverageValue ??
+    ((fallbackMatched.length > 0 || fallbackMissing.length > 0)
+      ? Math.max(0, Math.min(100, Math.round(fallbackCoverage * 100)))
+      : jobMatchScore);
+
+  const score = jobMatchScore;
+  const coverage = Math.max(0, Math.min(1, coveragePercent / 100));
 
   const matchedKeywords = llmAnalysis?.keyword_gaps?.covered && llmAnalysis.keyword_gaps.covered.length > 0
     ? llmAnalysis.keyword_gaps.covered
@@ -2181,9 +2191,7 @@ function calculateMatchInsights(job: any, tailoredResult: any, resume: any): Mat
     : fallbackActionItems;
 
   const summary = llmAnalysis?.snapshot?.summary
-    || (typeof llmCoverageValue === 'number'
-      ? `Match Score: ${llmCoverageValue}%`
-      : `Match Score: ${fallbackScore}%`);
+    || `Match Score: ${score}%`;
 
   const quantifiedCount = typeof llmAnalysis?.snapshot?.quantified_bullets?.count === 'number'
     ? llmAnalysis.snapshot.quantified_bullets.count
