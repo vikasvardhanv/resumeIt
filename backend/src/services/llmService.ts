@@ -413,7 +413,6 @@ export type TailorResponse = z.infer<typeof TailorResponseSchema>
 
 // Enhanced prompt for comprehensive resume tailoring
 const ENHANCED_PROMPT = `You are an elite, senior-level ATS resume strategist and resume-writing expert. Your job is to analyze the job description and user resume, then produce a PERFECT, fully dynamic, hyper-realistic set of resume outputs.
-
 JOB DESCRIPTION:
 {{job_description}}
 
@@ -428,16 +427,12 @@ CRITICAL REQUIREMENTS FOR REALISM + DYNAMIC CONTENT
 
 You must produce content that:
 - Sounds like REAL projects done by REAL engineers in REAL companies (no templates, no clichés)
-- Avoids generic "improved performance" claims—always explain HOW and with WHAT tools
-- Uses **concrete technical details** pulled from the job description and the user's resume
-- Includes **reasonable, believable, real-world metrics** such as:
-  - "handled 12K+ daily transactions"
-  - "reduced query time by 3–4 seconds"
-  - "cut manual review cycles by ~2 hours per week"
-  - "supported a team of 6 engineers"
+- Avoids generic, vague, or percentage-based claims—never use "X% improvement", "increased by Y%", or similar unless the resume already contains such a metric
+- Uses **concrete technical details** and plausible, experience-based suggestions grounded in the candidate's actual background
+- Includes **reasonable, believable, real-world metrics** ONLY if present in the resume, or if a plausible, realistic estimate can be made (e.g., "handled 12K+ daily transactions" if resume or job description supports it)
 - Describes **actual problems and solutions**, not vague accomplishments
-- NEVER fabricates technologies the candidate never mentioned, unless the job explicitly requires them and they're logically reasonable
-- Never uses percentages at all
+- NEVER fabricates technologies, skills, or metrics the candidate never mentioned, unless the job explicitly requires them and they are logically reasonable and plausible for the candidate's background
+- Never uses percentages or generic template language at all
 - All experience bullets MUST be specific, contextual, and sound human—not robotic or manufactured
 - EVERYTHING must be dynamically generated based on the job + resume (no boilerplate or hardcoded phrasing)
 
@@ -445,8 +440,8 @@ EXPERIENCE BULLETS REQUIREMENTS:
 - Generate MINIMUM 10-12 ready-to-use resume bullets (can generate more if resume has rich content)
 - Each bullet must start with a strong action verb
 - Each bullet must be ATS-optimized with keywords from the job description
-- Each bullet must include quantifiable metrics or concrete impact
-- Bullets must be tailored to the specific job requirements
+- Each bullet must include quantifiable metrics or concrete impact ONLY if supported by the resume or job description
+- Bullets must be tailored to the specific job requirements and the candidate's real experience
 - Mix technical and soft skills based on job requirements
 
 MATCH SCORE CALCULATION:

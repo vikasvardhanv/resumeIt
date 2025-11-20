@@ -207,6 +207,8 @@ let manualJobInput: HTMLElement | null = null;
 let manualJobText: HTMLTextAreaElement | null = null;
 let toggleManualJobBtn: HTMLButtonElement | null = null;
 let isManualJobMode = false;
+// Free/Paid usage state
+let tailoringStats: { plan: string; tailorings: number; limit: number } | null = null;
 
 // ============================================================================
 // INITIALIZATION
@@ -264,6 +266,22 @@ function showAuthView(): void {
 }
 
 async function showMainView(): Promise<void> {
+    // Fetch user profile for plan and tailoring stats
+    try {
+      const resp = await fetch(getApiUrl('/api/v1/user/profile'), { credentials: 'include' });
+      if (resp.ok) {
+        const data = await resp.json();
+        const plan = data?.subscription?.plan || 'free';
+        const tailorings = data?.stats?.tailorings || 0;
+        // Use backend env or fallback
+        const limit = plan === 'premium' ? Infinity : (parseInt((data?.subscription?.freeTierLimit || '100'), 10) || 100);
+        tailoringStats = { plan, tailorings, limit };
+      } else {
+        tailoringStats = null;
+      }
+    } catch {
+      tailoringStats = null;
+    }
   const authView = document.getElementById('authView');
   const mainView = document.getElementById('mainView');
   if (authView) authView.classList.add('hidden');
@@ -1111,7 +1129,28 @@ function updateTailorButton(): void {
     hasJob = !!(currentJob && currentJob.title);
   }
 
-  tailorBtn.disabled = !(hasResume && hasJob);
+  // Free/Paid tailoring limit logic
+  let overLimit = false;
+  let plan = 'free';
+  let limit = 100;
+  let tailorings = 0;
+  if (tailoringStats) {
+    plan = tailoringStats.plan;
+    limit = tailoringStats.limit;
+    tailorings = tailoringStats.tailorings;
+    overLimit = plan === 'free' && tailorings >= limit;
+  }
+
+  tailorBtn.disabled = !(hasResume && hasJob) || overLimit;
+
+  // Show upgrade CTA if over limit
+  const statusBar = document.getElementById('statusMessage');
+  if (overLimit && statusBar) {
+    statusBar.innerHTML = `You have reached your free tailoring limit (${limit}/month). <a href="https://resumeit.pro/upgrade" target="_blank" style="color:#0073b1;text-decoration:underline;">Upgrade to Pro</a> for unlimited tailoring.`;
+  } else if (statusBar) {
+    statusBar.textContent = 'Ready to tailor your resume!';
+  }
+// End updateTailorButton
 }
 
 function handleTailorJob(): void {
@@ -1144,8 +1183,15 @@ function handleTailorJob(): void {
 
   setStatus('Tailoring resume...');
   setButtonLoading(tailorBtn, true);
+  tailorBtn.disabled = true;
 
-  void tailorResume();
+  void tailorResume().finally(() => {
+    if (tailorBtn) {
+      setButtonLoading(tailorBtn, false);
+      tailorBtn.disabled = false;
+      tailorBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Tailor Resume`;
+    }
+  });
 }
 
 async function tailorResume(): Promise<void> {
@@ -1238,7 +1284,6 @@ async function tailorResume(): Promise<void> {
     console.log('=== TAILORING REQUEST END ===');
 
     setStatus('Resume tailored successfully!');
-    if (tailorBtn) setButtonLoading(tailorBtn, false);
     showResults(result);
 
     lastTailoredResult = result;
@@ -1264,11 +1309,6 @@ async function tailorResume(): Promise<void> {
     }
 
     showResumeStatus(errorMessage, 'error');
-  } finally {
-    if (tailorBtn) {
-      tailorBtn.disabled = false;
-      tailorBtn.innerHTML = 'Tailor Resume';
-    }
   }
 }
 
@@ -2407,9 +2447,11 @@ function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
   if (loading) {
     button.classList.add('btn-loading');
     button.disabled = true;
+    button.innerHTML = `<span class="spinner" style="vertical-align:middle;margin-right:8px;"></span>Loading...`;
   } else {
     button.classList.remove('btn-loading');
     button.disabled = false;
+    button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg> Tailor Resume`;
   }
 }
 
