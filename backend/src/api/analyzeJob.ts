@@ -191,6 +191,7 @@ analyzeJobRouter.post('/', requireAuth, analyzeJobLimiter, logAnalyzeJobRateLimi
       competitive_analysis: result.competitive_analysis,
       application_strategy: result.application_strategy,
       projects: result.projects,
+      analysis_insights: result.analysis_insights,
       metadata: {
         resume_format: parsedResume.format,
         resume_characters: resumeText.length,
