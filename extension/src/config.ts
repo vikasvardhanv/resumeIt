@@ -7,7 +7,7 @@ const sanitizeBaseUrl = (value?: string): string => {
 
 // Production URL as default - works out of the box
 const fallbackApiBase = 'https://resumeit-cdqp.onrender.com';
-const fallbackPremiumUrl = 'https://resumeit.ai/premium?source=extension';
+const fallbackPremiumUrl = 'https://resumecraft.dev';
 
 const sanitizeUrl = (value?: string): string => {
   if (!value) return '';
