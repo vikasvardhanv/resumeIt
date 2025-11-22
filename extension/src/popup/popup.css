@@ -1201,3 +1201,24 @@ body {
   color: white;
   transform: translateY(-1px);
 }
+
+/* Footer */
+.footer {
+  margin-top: auto;
+  padding: 16px;
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-main);
+}
+
+.footer-link {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}

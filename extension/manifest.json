@@ -20,7 +20,6 @@
     "*://*.workdayjobs.com/*",
     "*://*.greenhouse.io/*",
     "*://*.lever.co/*",
-    "http://localhost:*/*",
     "*://*/*"
   ],
   "icons": {
@@ -47,7 +46,6 @@
         "*://*.workdayjobs.com/*",
         "*://*.greenhouse.io/*",
         "*://*.lever.co/*",
-        "http://localhost:*/*",
         "*://*/*"
       ],
       "js": ["contentScript.js"],

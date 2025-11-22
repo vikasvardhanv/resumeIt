@@ -16,15 +16,7 @@
     <!-- Header -->
     <header class="header">
       <div class="logo-area">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-            stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M14 2V8H20" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M16 13H8" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M16 17H8" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M10 9H8" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <img src="../icons/icon32.png" alt="ResumeCraft logo" width="32" height="32" style="vertical-align:middle;" />
         <span class="app-title">ResumeCraft</span>
       </div>
       <button id="healthChip" class="health-chip" data-state="checking">
@@ -247,13 +239,23 @@
         <!-- Global Results Actions -->
         <div class="results-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;">
           <button id="copyBtn" class="btn-icon small-btn" title="Copy All Bullets">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
           </button>
           <button id="downloadBtn" class="btn-icon small-btn" title="Download">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
           </button>
           <button id="clearResultsBtn" class="btn-icon small-btn" title="Clear">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
       </div>
@@ -261,6 +263,10 @@
 
     <!-- Status Bar -->
     <div id="statusMessage" class="status-bar">Ready to start</div>
+
+    <footer class="footer">
+      <a href="https://resumecraft.dev/privacy.html" target="_blank" class="footer-link">Privacy Policy</a>
+    </footer>
   </div>
 
   <script type="module" src="popup.js"></script>

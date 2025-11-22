@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "API_BASE_URL=https://resumeit-cdqp.onrender.com PREMIUM_REDIRECT_URL=https://resumeit.ai/premium?source=extension node scripts/build.mjs",
-    "dev": "NODE_ENV=development API_BASE_URL=https://resumeit-cdqp.onrender.com PREMIUM_REDIRECT_URL=https://resumeit.ai/premium?source=extension node scripts/build.mjs --watch",
+    "build": "API_BASE_URL=https://resumeit-cdqp.onrender.com PREMIUM_REDIRECT_URL=https://resumecraft.dev/premium node scripts/build.mjs",
+    "dev": "NODE_ENV=development API_BASE_URL=https://resumeit-cdqp.onrender.com PREMIUM_REDIRECT_URL=https://resumecraft.dev/premium node scripts/build.mjs --watch",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "typecheck": "tsc --noEmit"
   },
